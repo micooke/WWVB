@@ -6,7 +6,7 @@ Copyright owners are the authors listed
 
 <h2>wwvb</h2>
 * Author/s: Mark Cooke, Martin Sniedze (github.com/mr-sneezy)
-<br>
+</br>
 Requirements: TimeDateTools.h, ATtiny_GPS (for setting based off GPS)
 
 WWVB: 60Khz carrier, Amplitude modulated to Vp -17dB for signal low
@@ -17,7 +17,7 @@ to 5% duty cycle
 
 Designed for the ATtiny85 @ 16MHz / 5V, but should work with 3.3V / 5V leonardo or uno
 -- See example\wwvb.ino
-TODO: i need to remove the software SPI stuff in the example as software SPI for the TFT just wont fit
+</br>TODO: i need to remove the software SPI stuff in the example as software SPI for the TFT just wont fit
 
 <h2>ATtiny_GPS</h2>
 * Author/s: Mark Cooke
@@ -34,4 +34,4 @@ Also does a bunch of other things like:
 1. calculates leapyears
 2. converts day, month to day of the year 
 3. converts invalid time/date additions ie. hour 25, day 1 -> hour 1, day 2 etc
-TODO: I need to move the static int arrays at the top to PROGMEM.
+</br>TODO: I need to move the static int arrays at the top to PROGMEM.
