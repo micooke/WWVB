@@ -4,8 +4,9 @@ Arduino libraries and projects
 All libraries (unless ive forked it from another repo) should be under a MIT license.
 Copyright owners are the authors listed
 
-* wwvb
-Author/s: Mark Cooke, Martin Sniedze (github.com/mr-sneezy)
+<h2>wwvb</h2>
+* Author/s: Mark Cooke, Martin Sniedze (github.com/mr-sneezy)
+<br>
 Requirements: TimeDateTools.h, ATtiny_GPS (for setting based off GPS)
 
 WWVB: 60Khz carrier, Amplitude modulated to Vp -17dB for signal low
@@ -18,15 +19,15 @@ Designed for the ATtiny85 @ 16MHz / 5V, but should work with 3.3V / 5V leonardo 
 -- See example\wwvb.ino
 TODO: i need to remove the software SPI stuff in the example as software SPI for the TFT just wont fit
 
-* ATtiny_GPS
-Author/s: Mark Cooke
+<h2>ATtiny_GPS</h2>
+* Author/s: Mark Cooke
 
 A very basic NMEA string parser for GPS strings GPRMC and GPZDA.
 It is very static at the moment (fixed decimal places for LLA, Time, Date etc), and needs a re-write
 It was designed for the ATtiny85 - i couldnt find any other parsers that actually fit on it.
 
-* TimeDateTools
-Author/s: Mark Cooke
+<h2>TimeDateTools</h2>
+* Author/s: Mark Cooke
 
 Converts from (char arrays) TimeString and DateString to their integers components
 Also does a bunch of other things like:
