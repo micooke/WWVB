@@ -5,9 +5,9 @@ All libraries (unless ive forked it from another repo) should be under a MIT lic
 Copyright owners are the authors listed
 
 ##wwvb
-* Author/s: Mark Cooke, Martin Sniedze @mr-sneezy
+* Author/s: [Mark Cooke](https://www.github.com/micooke), [Martin Sniedze](https://www.github.com/mr-sneezy)
 
-Requirements: `TimeDateTools.h`, ATtiny_GPS (for setting based off GPS)
+Requirements: [TimeDateTools.h](https://github.com/micooke/Arduino/blob/master/libraries/TimeDateTools/TimeDateTools.h), [ATtinyGPS.h](https://github.com/micooke/Arduino/blob/master/libraries/ATtinyGPS/ATtinyGPS.h) : for setting time based off GPS
 
 WWVB: 60Khz carrier, Amplitude modulated to Vp -17dB for signal low
 
@@ -20,11 +20,12 @@ Designed for the ATtiny85 @ 16MHz / 5V, but should work with 3.3V / 5V leonardo 
 
 TODO: i need to remove the software SPI stuff in the example as software SPI for the TFT just wont fit
 
-##ATtiny_GPS
+##ATtinyGPS
 * Author/s: Mark Cooke
 
 A very basic NMEA string parser for GPS strings GPRMC and GPZDA.
 It is very static at the moment (fixed decimal places for LLA, Time, Date etc), and needs a re-write (and rename)
+
 It was designed for the ATtiny85 - i couldnt find any other parsers that actually fit on it.
 
 ##TimeDateTools
