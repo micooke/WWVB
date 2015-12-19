@@ -1,6 +1,8 @@
 #ifndef TimeDateTools_h
 #define TimeDateTools_h
 
+#include <Arduino.h>
+
 //											      Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
 const uint8_t days_in_a_month[12] = { 31, 28, 31, 30, 31, 30, 31, 31,30, 31, 30,  31 }; // actual (non-leap year)
 const uint16_t cumulative_days_in_a_month[12] = { 0 , 31, 59, 90,120,151,181,212,243,273,304,334 }; // cumulative

@@ -1,32 +1,76 @@
 #ifndef wwvb_h
 #define wwvb_h
 /*
+Designed for Arduino with the ATtiny85 @ 16MHz / 5V
+(but should work with 3.3V / 5V leonardo/micro or uno/nano)
+
 WWVB: 60Khz carrier, Amplitude modulated to Vp -17dB for signal low
 
-Im hoping that the wwvb receiver is insensitive to this -17dB value,
-as im using pulse width modulation in slow time (changing compare vector OCR1A)
-to 5% duty cycle
+Hopefully your wwvb receiver is insensitive to this -17dB value,
+as this library uses pulse width modulation to set a 5% duty cycle
+for the 'low' signal
 
+Copyright (c) 2015 Mark Cooke, Martin Sniedze
+
+Author/s: Mark Cooke, Martin Sniedze
+* gihtub.com/micooke
+* gihtub.com/mr-sneezy
+
+License: MIT license (see LICENSE file)
+*/
+/*
+-----------------------------------------------------------------------------
+Minimum example (see minimum.ino)
 -----------------------------------------------------------------------------
 
-Designed for the ATtiny85 @ 16MHz / 5V, but should work with 3.3V / 5V leonardo or uno
+#include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
+#include <wwvb.h> // include before ATtinyGPS.h
+wwvb wwvb_tx;
 
+// The ISR sets the PWM pulse width to correspond with the WWVB bit
+// Note: The default is to use OC1B (see wwvb.h)
+ISR(TIMER1_COMPB_vect)
+{
+	cli(); // disable interrupts
+	wwvb_tx.interrupt_routine();
+	sei(); // enable interrupts
+}
+
+void setup()
+{
+	wwvb_tx.setup();
+
+	// Note: The default is to include DateString & TimeString tools (see wwvb.h)
+	wwvb_tx.set_time(__DATE__, __TIME__);
+	wwvb_tx.start(); // Thats it
+}
+void loop()
+{
+	delay(1); // Recommended
+}
+
+-----------------------------------------------------------------------------
 */
 
 #include <Arduino.h>
 
+// If not defined, require TimeString and DateString conversion
+// (i.e. to set the clock to the compiled time)
 #if !defined(REQUIRE_TIMEDATESTRING)
 #define REQUIRE_TIMEDATESTRING 1
 #endif
 
 #include <TimeDateTools.h>
 
+// Default to using OC1B as the output ( pin mapping listed under wwvb::setup() )
+// This is because OC1A uses an SPI pin on the ATtiny85 - you may want to use SPI and wwvb
 #if !(defined(USE_OC1A) | defined(USE_OC1B))
 #define USE_OC1B
 #endif
 
-// This is setup for the ATtiny85, the output pin is PB1
-// Note: this will work with the ATtiny45 too (if you can find one!)
+// wwvb class - note, you will need to specify the interrupt routine in your main sketch
+
+
 class wwvb
 {
 private:
@@ -67,10 +111,10 @@ private:
 	// MARKER: Low for 0.8s / 1.0s
 	uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT, WWVB_LOWTIME;
 	// hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
-	uint16_t pulse_width[3] = {WWVB_LOW, WWVB_HIGH, WWVB_MARKER};
+	uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
 	uint8_t PWM_OFF, PWM_LOW, PWM_HIGH;
 	uint16_t isr_count = PWM_OFF;
-	
+
 	uint8_t frame_index, subframe_index;
 
 	boolean _is_active = false;
@@ -80,7 +124,7 @@ public:
 		/*
 		Setup the count values that correspond to 0.2s,0.5s,0.8s for wwvb encoding [LOW,HIGH,MARKER]
 		i.e.  .0 .1 .2 .3 .4 .5 .6 .7 .8 .9 1.0 (1s = END OF BIT)
-		      |     |________|________|______|
+			  |     |________|________|______|
 		LOW   :____/          _______________\
 		HIGH  :______________/         ______\
 		MARKER:_______________________/      \
@@ -116,7 +160,7 @@ public:
 #endif
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
 		WWVB_ENDOFBIT = 1000;
-		
+
 		pulse_width[0] = WWVB_LOW;
 		pulse_width[1] = WWVB_HIGH;
 		pulse_width[1] = WWVB_MARKER;
@@ -149,7 +193,7 @@ public:
 
 		TCCR1 |= _BV(PWM1A) // Clear timer/counter after compare match to OCR1C
 			| _BV(COM1A1);   // Clear the OC1A output line after match
-			
+
 		TIMSK |= _BV(OCIE1A);// enable compare match interrupt on Timer1
 
 		OCR1A = PWM_LOW; // Set pulse width to 50% duty cycle
@@ -249,16 +293,28 @@ public:
 #endif
 		}
 		else if (isr_count >= WWVB_ENDOFBIT)
+		{
 #if defined(USE_OC1A)
-		OCR1A = PWM_LOW;
+			OCR1A = PWM_LOW;
 #elif defined(USE_OC1B)
-		OCR1B = PWM_LOW;
+			OCR1B = PWM_LOW;
 #endif
-		// increment the frame indices
-		frame_index = (frame_index == 59) ? 0 : frame_index + 1;
-		subframe_index = frame_index % 10;
-		set_lowTime();
-		isr_count = 0;
+			// increment the frame indices
+			if (++frame_index == 60)
+			{
+				//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
+				uint8_t secs_;
+				addTimezone(secs_, mins_, hour_, DD_, MM_, YY_, 0, 1, 0);
+
+				// reset the frame_index
+				frame_index = 0;
+			}
+			subframe_index = frame_index % 10;
+			set_lowTime();
+
+			// reset the isr_count (poor-mans timer, but its synced to the 60kHz)
+			isr_count = 0;
+		}
 	}
 
 	void start()
@@ -279,7 +335,7 @@ public:
 	}
 	void stop()
 	{
-		_is_active = false; 
+		_is_active = false;
 
 #if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__)
 		bitClear(TCCR1, CS12); // Set clock prescalar to 000 (STOP Timer/Clock)
@@ -303,7 +359,7 @@ public:
 		return _is_active;
 	}
 
-	void set_time(const uint8_t &_mins, const uint8_t &_hour, 
+	void set_time(const uint8_t &_mins, const uint8_t &_hour,
 		const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
 		const uint8_t _daylight_savings = 0)
 	{
@@ -324,7 +380,7 @@ public:
 	{
 
 		uint8_t _mins, _hour, _secs, _DD, _MM, _YY;
-			
+
 		DateString_to_DDMMYY(dateString, _DD, _MM, _YY);
 		TimeString_to_HHMMSS(timeString, _hour, _mins, _secs);
 
@@ -375,7 +431,7 @@ private:
 		if (doty_ != _doty)
 		{
 			doty_ = _doty;
-			
+
 			// DOTY             0   1   2   3   4   5   6   7   8   9
 			//                  -   - 200 100   0  80  40  20  10   M
 			memset(DOTY, 0, sizeof(bool) * 10);
@@ -442,7 +498,7 @@ private:
 			MISC[7] = (_daylight_savings >> 1) & 0x1;
 			MISC[8] = _daylight_savings & 0x1;
 		}
-		
+
 	}
 	void set_lowTime()
 	{
@@ -450,15 +506,15 @@ private:
 		switch (frame_index)
 		{
 			// markers
-			case 0:  // start frame
-			case 9:  // end MINS
-			case 19: // end HOUR
-			case 29: // end DOTY
-			case 39: // end DUT1
-			case 49: // end YEAR
-			case 59: // end MISC, end frame
-				WWVB_LOWTIME = WWVB_MARKER;
-				return;
+		case 0:  // start frame
+		case 9:  // end MINS
+		case 19: // end HOUR
+		case 29: // end DOTY
+		case 39: // end DUT1
+		case 49: // end YEAR
+		case 59: // end MISC, end frame
+			WWVB_LOWTIME = WWVB_MARKER;
+			return;
 		}
 
 		// No frame marker, so set the subframe bit data
