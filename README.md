@@ -1,5 +1,5 @@
-# Arduino
-Arduino libraries and projects
+# Arduino WWVB Transmitter
+WWVB Tx for Attiny85, nano, micro etc.
 
 All libraries (unless ive forked it from another repo) should be under a MIT license.
 Copyright owners are the authors listed
