@@ -5,8 +5,8 @@ Designed for the ATtiny85 @ 16MHz / 5V, but should work with 3.3V / 5V leonardo 
 * Author/s: [Mark Cooke](https://www.github.com/micooke), [Martin Sniedze](https://www.github.com/mr-sneezy)
 
 ## Requirements
-* [TimeDateTools.h](https://github.com/micooke/Arduino/blob/master/libraries/TimeDateTools/TimeDateTools.h)
-* [ATtinyGPS.h](https://github.com/micooke/Arduino/blob/master/libraries/ATtinyGPS/ATtinyGPS.h) : for setting time based off GPS
+* [TimeDateTools.h](https://github.com/micooke/ATtinyGPS/TimeDateTools.h)
+* [ATtinyGPS.h](https://github.com/micooke/ATtinyGPS/ATtinyGPS.h) : for setting time based off a serial GPS
 
 
 ## About
