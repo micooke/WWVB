@@ -1,18 +1,29 @@
 #include <Arduino.h>
 
 /*
-Nano connections
-Using OC1B (default)
-Nano Pin 10 | D7 -> WWVB Antenna
-
-Hardware serial (default)
-Nano Pin 2 | D0/RX -> GPS TX
-
-Software serial
-Nano Pin 11 | D8 -> GPS TX
-
-TODO: Include ascii art for the nano from:
-http://busyducks.com/ascii-art-arduinos
+Arduino Nano
+       +----+=====+----+
+       |    | USB |    |
+SCK B5 |D13 +-----+D12 | B4 MISO
+       |3V3        D11~| B3 MOSI
+       |Vref       D10~| B2 SS
+    C0 |A0          D9~| B1 |=> WWVB ANTENNA
+    C1 |A1          D8 | B0
+    C2 |A2          D7 | D7 |<= GPS Tx (Software Serial)
+    C3 |A3          D6~| D6
+SDA C4 |A4          D5~| D5
+SCL C5 |A5          D4 | D4
+       |A6          D3~| D3 INT1
+       |A7          D2 | D2 INT0
+       |5V         GND |   
+    C6 |RST        RST | C6
+       |GND        TX1 | D0
+       |Vin        RX1 | D1 |<= GPS Tx (Hardware Serial)
+       |  5V MOSI GND  |
+       |   [] [] []    |
+       |   [] [] []    |
+       | MISO SCK RST  |
+       +---------------+
 */
 
 
@@ -21,23 +32,28 @@ http://busyducks.com/ascii-art-arduinos
 // e.g. wwvb_tx.set_time(__DATE__, __TIME__);
 // Note: #define REQUIRE_TIMEDATESTRING 0 saves 1172 bytes of flash and 46 bytes of static RAM!
 
+#define USE_OC1A // Use OC1A / D9
+
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
 #include <wwvb.h> // include before ATtinyGPS.h
 wwvb wwvb_tx;
 
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
+#if defined(USE_OC1A)
+ISR(TIMER1_COMPA_vect)
+#elif defined(USE_OC1B)
 ISR(TIMER1_COMPB_vect)
+#endif
 {
 	cli(); // disable interrupts
 	wwvb_tx.interrupt_routine();
 	sei(); // enable interrupts
 }
 
-
 //#define USE_SOFTWARE_SERIAL
 #ifdef USE_SOFTWARE_SERIAL
 #include <SoftwareSerial.h>
-SoftwareSerial ttl(11,12); // Tx pin (12) not used in this example
+SoftwareSerial ttl(7,8); // Tx pin (8) not used in this example
 #else
 #define ttl Serial
 #endif
@@ -56,8 +72,6 @@ void setup()
 	wwvb_tx.setup();
 
 	ttl.begin(9600);
-
-	t1 = millis();
 }
 
 void loop()

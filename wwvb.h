@@ -28,8 +28,11 @@ Minimum example (see minimum.ino)
 wwvb wwvb_tx;
 
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
-// Note: The default is to use OC1B (see wwvb.h)
+#if defined(USE_OC1A)
+ISR(TIMER1_COMPA_vect)
+#elif defined(USE_OC1B)
 ISR(TIMER1_COMPB_vect)
+#endif
 {
 	cli(); // disable interrupts
 	wwvb_tx.interrupt_routine();
@@ -100,6 +103,9 @@ private:
 	//                   8   4   2   1   - LYI LSW   2   1   M
 	boolean MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 
+	// temp variables
+	uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
+	// internal variables, set by set_time ONLY
 	uint8_t mins_, hour_; // 00-59, 00-23
 	uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
 	uint16_t doty_; // 1=1 Jan, 365 = 31 Dec (or 366 in a leap year)
@@ -302,9 +308,8 @@ public:
 			// increment the frame indices
 			if (++frame_index == 60)
 			{
-				//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-				uint8_t secs_;
-				addTimezone(secs_, mins_, hour_, DD_, MM_, YY_, 0, 1, 0);
+				// increment to the next minute
+				add_time(1, 0);
 
 				// reset the frame_index
 				frame_index = 0;
@@ -358,22 +363,43 @@ public:
 	{
 		return _is_active;
 	}
-
+	void get_time(uint8_t &_mins, uint8_t &_hour,
+		uint8_t &_DD, uint8_t &_MM, uint8_t &_YY)
+	{
+		_mins = mins_;
+		_hour = hour_;
+		_DD = DD_;
+		_MM = MM_;
+		_YY = YY_;
+	}
+	
 	void set_time(const uint8_t &_mins, const uint8_t &_hour,
 		const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
 		const uint8_t _daylight_savings = 0)
 	{
-		boolean _is_leap_year = is_leap_year(_YY);
-		uint16_t _doty = to_day_of_the_year(_DD, _MM, _is_leap_year);
+		// get the current time
+		t_mm = _mins;
+		t_hh = _hour;
+		t_DD = _DD;
+		t_MM = _MM;
+		t_YY = _YY;
 
-		// Note: these set commands are conditional on a difference 
-		// between the set value and the internal (saved) state
-		set_mins(_mins);
-		set_hour(_hour);
-		set_doty(_doty);
-		//set_dut1(); // only need to do this once at setup as we set dut1 to all zeros
-		set_year(_YY);
-		set_misc(_is_leap_year, _daylight_savings);
+		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
+		addTimezone(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, 1, 0);
+
+		// set the correct frame bits
+		set_time(_daylight_savings);
+	}
+	void add_time(const uint8_t &_mins, const uint8_t &_hour)
+	{
+		// get the current time
+		get_time(t_mm, t_hh, t_DD, t_MM, t_YY);
+
+		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
+		addTimezone(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, _mins, _hour);
+		
+		// set the correct frame bits
+		set_time();
 	}
 #if( REQUIRE_TIMEDATESTRING == 1)
 	void set_time(char dateString[], char timeString[], const uint8_t _daylight_savings = 0)
@@ -385,10 +411,29 @@ public:
 		TimeString_to_HHMMSS(timeString, _hour, _mins, _secs);
 
 		set_time(_mins, _hour, _DD, _MM, _YY, _daylight_savings);
-
 	}
 #endif
 private:
+	// this function performs no range-checking of variables
+	void set_time(const uint8_t _daylight_savings = 0)
+	{
+		boolean _is_leap_year = is_leap_year(2000 + t_YY);
+		uint16_t _doty = to_day_of_the_year(t_DD, t_MM, _is_leap_year);
+
+		// Note: these set commands are conditional on a difference 
+		// between the set value and the internal (saved) state
+		set_mins(t_mm);
+		set_hour(t_hh);
+
+		set_day(t_DD);
+		set_month(t_MM);
+		
+		set_doty(_doty);
+		//set_dut1(); // only need to do this once at setup as we set dut1 to all zeros
+		set_year(t_YY);
+		
+		set_misc(_is_leap_year, _daylight_savings);
+	}
 	void set_mins(uint8_t _mins)
 	{
 		if (mins_ != _mins)
@@ -456,6 +501,20 @@ private:
 		memset(YEAR, 0, sizeof(bool) * 4); // clear the first 4 values
 		// Note: +ve, -ve makes not difference because the DUT1 value
 		// (resides in YEAR) is set to zero on the next line
+	}
+	void set_day(uint8_t _DD)
+	{
+		if (DD_ != _DD)
+		{
+			DD_ = _DD;
+		}
+	}
+	void set_month(uint8_t _MM)
+	{
+		if (MM_ != _MM)
+		{
+			MM_ = _MM;
+		}
 	}
 	void set_year(uint8_t _year)
 	{

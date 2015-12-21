@@ -1,3 +1,7 @@
 *.vcxproj
 *.filters
 __vm
+Debug
+Release
+.vs
+*.sln

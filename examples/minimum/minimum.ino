@@ -1,20 +1,23 @@
 /*
-ATtiny85 connections
+ATtiny85
 
-                     +-\/-+
-                RST 1|*   |8 VCC
-                PB3 2|    |7 PB2
- WWVB ANTENNA | PB4 3|    |6 PB1
-                GND 4|    |5 PB0
-                     +----+
+                       +-\/-+
+                  RST 1|*   |8 VCC
+                  PB3 2|    |7 PB2
+ WWVB ANTENNA =>| PB4 3|    |6 PB1
+                  GND 4|    |5 PB0
+                       +----+
 */
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
 #include <wwvb.h> // include before ATtinyGPS.h
 wwvb wwvb_tx;
 
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
-// Note: The default is to use OC1B (see wwvb.h)
+#if defined(USE_OC1A)
+ISR(TIMER1_COMPA_vect)
+#elif defined(USE_OC1B)
 ISR(TIMER1_COMPB_vect)
+#endif
 {
 	cli(); // disable interrupts
 	wwvb_tx.interrupt_routine();
