@@ -8,6 +8,7 @@ ATtiny85
                   GND 4|    |5 PB0
                        +----+
 */
+#define REQUIRE_TIMEDATESTRING 1
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
 #include <wwvb.h> // include before ATtinyGPS.h
 wwvb wwvb_tx;
