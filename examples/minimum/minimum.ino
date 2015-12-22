@@ -9,6 +9,8 @@ ATtiny85
                        +----+
 */
 #define REQUIRE_TIMEDATESTRING 1
+#define USE_OC1A
+
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
 #include <wwvb.h> // include before ATtinyGPS.h
 wwvb wwvb_tx;
@@ -35,5 +37,4 @@ void setup()
 }
 void loop()
 {
-	delay(1); // Recommended
 }

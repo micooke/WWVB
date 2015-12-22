@@ -89,41 +89,43 @@ private:
 	* 1 bit of data per second
 	*/
 
-	//                   0   1   2   3   4   5   6   7   8   9
-	//                   M  40  20  10   0   8   4   2   1   M
-	boolean MINS[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                   -   -  20  10   0   8   4   2   1   M
-	boolean HOUR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                   -   - 200 100   0  80  40  20  10   M
-	boolean DOTY[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                   8   4   2   1   -   -   +   -   +   M
-	boolean DUT1[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                 0.8 0.4 0.2 0.1   -  80  40  20  10   M
-	boolean YEAR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                   8   4   2   1   - LYI LSW   2   1   M
-	boolean MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                            0   1   2   3   4   5   6   7   8   9
+	//                            M  40  20  10   0   8   4   2   1   M
+	volatile boolean MINS[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
+	//                            -   -  20  10   0   8   4   2   1   M
+	volatile boolean HOUR[10] = { 0,  0,  1,  1,  0,  1,  1,  1,  1,  1 };
+	//                            -   - 200 100   0  80  40  20  10   M
+	volatile boolean DOTY[10] = { 0,  0,  1,  1,  0,  1,  1,  1,  1,  1 };
+	//                            8   4   2   1   -   -   +   -   +   M
+	volatile boolean DUT1[10] = { 1,  1,  1,  1,  0,  0,  0,  1,  0,  1 };
+	//                            0.8 0.4 0.2 0.1 -  80  40  20  10   M
+	volatile boolean YEAR[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
+	//                            8   4   2   1   - LYI LSW   2   1   M
+	volatile boolean MISC[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
 
 	// temp variables
-	uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
+	volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
 	// internal variables, set by set_time ONLY
-	uint8_t mins_, hour_; // 00-59, 00-23
-	uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
-	uint16_t doty_; // 1=1 Jan, 365 = 31 Dec (or 366 in a leap year)
-	boolean is_leap_year_ = 0;
-	uint8_t daylight_savings_ = 0; // 00 - no, 10 - starts today, 11 - yes, 01 - ends today 
+	volatile uint8_t mins_, hour_; // 00-59, 00-23
+	volatile uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
+	volatile uint16_t doty_; // 1=1 Jan, 365 = 31 Dec (or 366 in a leap year)
+	volatile boolean is_leap_year_ = 0;
+	volatile uint8_t daylight_savings_ = 0; // 00 - no, 10 - starts today, 11 - yes, 01 - ends today 
 
 	// LOW :   Low for 0.2s / 1.0s (20% low duty cycle)
 	// HIGH:   Low for 0.5s / 1.0s
 	// MARKER: Low for 0.8s / 1.0s
-	uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT, WWVB_LOWTIME;
 	// hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
+	uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
 	uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
-	uint8_t PWM_OFF, PWM_LOW, PWM_HIGH;
-	uint16_t isr_count = PWM_OFF;
+	
+	volatile uint16_t WWVB_LOWTIME;
+	uint8_t PWM_LOW, PWM_HIGH;
+	
+	volatile uint16_t isr_count = 0;
+	volatile uint8_t frame_index, subframe_index;
 
-	uint8_t frame_index, subframe_index;
-
-	boolean _is_active = false;
+	volatile boolean _is_active = false;
 public:
 	void setup() {
 
@@ -165,7 +167,6 @@ public:
 		WWVB_ENDOFBIT = 60150;
 #endif
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
-		WWVB_ENDOFBIT = 1000;
 
 		pulse_width[0] = WWVB_LOW;
 		pulse_width[1] = WWVB_HIGH;
@@ -270,7 +271,7 @@ public:
 		// clear the indexing
 		frame_index = 0;
 		subframe_index = 0;
-		isr_count = PWM_OFF;
+		isr_count = 0;
 		set_dut1(); // This isnt set again - dut1 is unused (but still sent)
 
 		sei(); // enable interrupts
@@ -327,16 +328,28 @@ public:
 		frame_index = 0;
 		subframe_index = 0;
 		set_lowTime();
-		OCR1A = PWM_LOW;   // Set OCR1A to 5% duty cycle (signal LOW)
+#if defined(USE_OC1A)
+		OCR1A = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
+#elif defined(USE_OC1B)
+		OCR1B = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
+#endif
 		resume();
 	}
 	void set_low()
 	{
-		OCR1A = PWM_LOW;
+#if defined(USE_OC1A)
+		OCR1A = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
+#elif defined(USE_OC1B)
+		OCR1B = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
+#endif
 	}
 	void set_high()
 	{
-		OCR1A = PWM_HIGH;
+#if defined(USE_OC1A)
+		OCR1A = PWM_HIGH;   // Set PWM to 50% duty cycle (signal LOW)
+#elif defined(USE_OC1B)
+		OCR1B = PWM_HIGH;   // Set PWM to 50% duty cycle (signal LOW)
+#endif
 	}
 	void stop()
 	{
@@ -363,8 +376,8 @@ public:
 	{
 		return _is_active;
 	}
-	void get_time(uint8_t &_mins, uint8_t &_hour,
-		uint8_t &_DD, uint8_t &_MM, uint8_t &_YY)
+	void get_time(volatile uint8_t &_mins, volatile uint8_t &_hour,
+		volatile uint8_t &_DD, volatile uint8_t &_MM, volatile uint8_t &_YY)
 	{
 		_mins = mins_;
 		_hour = hour_;
@@ -385,7 +398,7 @@ public:
 		t_YY = _YY;
 
 		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-		addTimezone(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, 1, 0);
+		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, 1, 0);
 
 		// set the correct frame bits
 		set_time(_daylight_savings);
@@ -396,7 +409,7 @@ public:
 		get_time(t_mm, t_hh, t_DD, t_MM, t_YY);
 
 		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-		addTimezone(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, _mins, _hour);
+		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, _mins, _hour);
 		
 		// set the correct frame bits
 		set_time();
@@ -418,7 +431,7 @@ private:
 	void set_time(const uint8_t _daylight_savings = 0)
 	{
 		boolean _is_leap_year = is_leap_year(2000 + t_YY);
-		uint16_t _doty = to_day_of_the_year(t_DD, t_MM, _is_leap_year);
+		uint16_t _doty = to_day_of_the_year<volatile uint8_t>(t_DD, t_MM, _is_leap_year);
 
 		// Note: these set commands are conditional on a difference 
 		// between the set value and the internal (saved) state
@@ -443,13 +456,18 @@ private:
 			// set MINS
 			//                  0   1   2   3   4   5   6   7   8   9
 			//                  M  40  20  10   0   8   4   2   1   M
-			memset(MINS, 0, sizeof(bool) * 10); // clear the array #include <cstring>
 			if (_mins >= 40) { _mins -= 40; MINS[1] = 1; }
+			else { MINS[1] = 0; }
 			if (_mins >= 20) { _mins -= 20; MINS[2] = 1; }
+			else { MINS[2] = 0; }
 			if (_mins >= 10) { _mins -= 10; MINS[3] = 1; }
+			else { MINS[3] = 0; }
 			if (_mins >= 8) { _mins -= 8; MINS[5] = 1; }
+			else { MINS[5] = 0; }
 			if (_mins >= 4) { _mins -= 4; MINS[6] = 1; }
+			else { MINS[6] = 0; }
 			if (_mins >= 2) { _mins -= 2; MINS[7] = 1; }
+			else { MINS[7] = 0; }
 			MINS[8] = _mins;
 		}
 	}
@@ -462,12 +480,16 @@ private:
 			// set HOUR
 			//                  0   1   2   3   4   5   6   7   8   9
 			//                  -   -  20  10   0   8   4   2   1   M
-			memset(HOUR, 0, sizeof(bool) * 10);
 			if (_hour >= 20) { _hour -= 20; HOUR[2] = 1; }
+			else { HOUR[2] = 0; }
 			if (_hour >= 10) { _hour -= 10; HOUR[3] = 1; }
+			else { HOUR[3] = 0; }
 			if (_hour >= 8) { _hour -= 8; HOUR[5] = 1; }
+			else { HOUR[5] = 0; }
 			if (_hour >= 4) { _hour -= 4; HOUR[6] = 1; }
+			else { HOUR[6] = 0; }
 			if (_hour >= 2) { _hour -= 2; HOUR[7] = 1; }
+			else { HOUR[7] = 0; }
 			HOUR[8] = _hour;
 		}
 	}
@@ -479,17 +501,25 @@ private:
 
 			// DOTY             0   1   2   3   4   5   6   7   8   9
 			//                  -   - 200 100   0  80  40  20  10   M
-			memset(DOTY, 0, sizeof(bool) * 10);
 			if (_doty >= 200) { _doty -= 200; DOTY[2] = 1; }
+			else { DOTY[2] = 0; }
 			if (_doty >= 100) { _doty -= 100; DOTY[3] = 1; }
+			else { DOTY[3] = 0; }
 			if (_doty >= 80) { _doty -= 80; DOTY[5] = 1; }
+			else { DOTY[5] = 0; }
 			if (_doty >= 40) { _doty -= 40; DOTY[6] = 1; }
+			else { DOTY[6] = 0; }
 			if (_doty >= 20) { _doty -= 20; DOTY[7] = 1; }
+			else { DOTY[7] = 0; }
 			if (_doty >= 10) { _doty -= 10; DOTY[8] = 1; }
-			memset(DUT1, 0, sizeof(bool) * 4); // clear the first 4 values
+			else { DOTY[8] = 0; }
+			
 			if (_doty >= 8) { _doty -= 8; DUT1[0] = 1; }
+			else { DUT1[0] = 0; }
 			if (_doty >= 4) { _doty -= 4; DUT1[1] = 1; }
+			else { DUT1[1] = 0; }
 			if (_doty >= 2) { _doty -= 2; DUT1[2] = 1; }
+			else { DUT1[2] = 0; }
 			DUT1[3] = _doty;
 		}
 	}
@@ -498,7 +528,12 @@ private:
 		// DUT1             0   1   2   3   4   5   6   7   8   9
 		//                  8   4   2   1   -   -   +   -   +   M
 		DUT1[7] = 1; // set sign to -ve
-		memset(YEAR, 0, sizeof(bool) * 4); // clear the first 4 values
+
+		// clear the first 4 values
+		YEAR[0] = 0;
+		YEAR[1] = 0;
+		YEAR[2] = 0;
+		YEAR[3] = 0;
 		// Note: +ve, -ve makes not difference because the DUT1 value
 		// (resides in YEAR) is set to zero on the next line
 	}
@@ -526,15 +561,21 @@ private:
 			//                0.8 0.4 0.2 0.1   -  80  40  20  10   M
 			// MISC             0   1   2   3   4   5   6   7   8   9
 			//                  8   4   2   1   - LYI LSW   2   1   M
-			memset(YEAR, 0, sizeof(bool) * 10); // clear the whole array (we dont care about bits 0->3)
 			if (_year >= 80) { _year -= 80; YEAR[5] = 1; }
+			else { YEAR[5] = 0; }
 			if (_year >= 40) { _year -= 40; YEAR[6] = 1; }
+			else { YEAR[6] = 0; }
 			if (_year >= 20) { _year -= 20; YEAR[7] = 1; }
+			else { YEAR[7] = 0; }
 			if (_year >= 10) { _year -= 10; YEAR[8] = 1; }
-			memset(MISC, 0, sizeof(bool) * 4); // clear the first 4 values
+			else { YEAR[8] = 0; }
+			
 			if (_year >= 8) { _year -= 8; MISC[0] = 1; }
+			else { MISC[0] = 0; }
 			if (_year >= 4) { _year -= 4; MISC[1] = 1; }
+			else { MISC[1] = 0; }
 			if (_year >= 2) { _year -= 2; MISC[2] = 1; }
+			else { MISC[2] = 0; }
 			MISC[3] = _year;
 		}
 	}
