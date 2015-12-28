@@ -249,23 +249,22 @@ public:
 		PWM_LOW = 3; // ~5% duty cycle
 #endif
 
+
 #if defined(USE_OC1A)
 		pinMode(9, OUTPUT);
 
 		TCCR1A = _BV(COM1A1); // Clear OC1A on compare match to OCR1A
-
-		TIMSK1 |= _BV(OCIE1A);// enable compare match interrupt on Timer1
-
+		
 		OCR1A = PWM_LOW;
 #elif defined(USE_OC1B)
 		pinMode(10, OUTPUT);
 
 		TCCR1A = _BV(COM1B1); // Clear OC1B on compare match to OCR1B
 
-		TIMSK1 |= _BV(OCIE1B);// enable compare match interrupt on Timer1
-
 		OCR1B = PWM_LOW;
 #endif
+
+TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 
 #endif
 		// clear the indexing
