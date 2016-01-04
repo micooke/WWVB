@@ -118,16 +118,23 @@ private:
 	// hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
 	uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
 	uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
-	
+
 	volatile uint16_t WWVB_LOWTIME;
 	uint8_t PWM_LOW, PWM_HIGH;
-	
+
+	uint16_t pulse_width_ms[3] = { 200, 500, 800 };
+	uint16_t WWVB_LOWTIME_ms = 200;
+
 	volatile uint16_t isr_count = 0;
 	volatile uint8_t frame_index, subframe_index;
 
 	volatile boolean _is_active = false;
+	volatile boolean _is_high = false;
+
+	uint32_t t0 = 0;
 public:
-	void setup() {
+	void setup()
+	{
 
 		/*
 		Setup the count values that correspond to 0.2s,0.5s,0.8s for wwvb encoding [LOW,HIGH,MARKER]
@@ -170,7 +177,7 @@ public:
 
 		pulse_width[0] = WWVB_LOW;
 		pulse_width[1] = WWVB_HIGH;
-		pulse_width[1] = WWVB_MARKER;
+		pulse_width[2] = WWVB_MARKER;
 
 		// Generate 60kHz carrier
 #if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__)
@@ -254,7 +261,7 @@ public:
 		pinMode(9, OUTPUT);
 
 		TCCR1A = _BV(COM1A1); // Clear OC1A on compare match to OCR1A
-		
+
 		OCR1A = PWM_LOW;
 #elif defined(USE_OC1B)
 		pinMode(10, OUTPUT);
@@ -264,7 +271,7 @@ public:
 		OCR1B = PWM_LOW;
 #endif
 
-TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
+		TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 
 #endif
 		// clear the indexing
@@ -272,6 +279,8 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 		subframe_index = 0;
 		isr_count = 0;
 		set_dut1(); // This isnt set again - dut1 is unused (but still sent)
+
+		set_lowTime();
 
 		sei(); // enable interrupts
 	}
@@ -290,13 +299,14 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 		2.3. set the next WWVB_LOWTIME
 		*/
 
-		if (++isr_count == WWVB_LOWTIME)
+		if ((_is_high == false) & (++isr_count >= WWVB_LOWTIME))
 		{
 #if defined(USE_OC1A)
 			OCR1A = PWM_HIGH;
 #elif defined(USE_OC1B)
 			OCR1B = PWM_HIGH;
 #endif
+			_is_high = true;
 		}
 		else if (isr_count >= WWVB_ENDOFBIT)
 		{
@@ -305,6 +315,57 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 #elif defined(USE_OC1B)
 			OCR1B = PWM_LOW;
 #endif
+			_is_high = false;
+
+			// increment the frame indices
+			if (++frame_index == 60)
+			{
+				// increment to the next minute
+				add_time(1, 0);
+
+				// reset the frame_index
+				frame_index = 0;
+			}
+			subframe_index = frame_index % 10;
+			set_lowTime();
+
+			// reset the isr_count (poor-mans timer, but its synced to the 60kHz)
+			isr_count = 0;
+		}
+	}
+
+	void step()
+	{
+		/*
+		This routine is checked at each counter overflow - i.e. at 60kHz
+
+		if the 60kHz PWM pulse has been low for the correct time
+		1. set the PWM pulse high
+
+		if instead the PWM pulse has finished sending the data bit (1second has elapsed)
+		2.1. set the PWM pulse low
+		2.2. increment to the next bit in the subframe
+		2.3. set the next WWVB_LOWTIME
+		*/
+		uint32_t _dt = millis() - t0;
+
+		if ((_is_high == false) & (_dt >= WWVB_LOWTIME))
+		{
+#if defined(USE_OC1A)
+			OCR1A = PWM_HIGH;
+#elif defined(USE_OC1B)
+			OCR1B = PWM_HIGH;
+#endif
+			_is_high = true;
+		}
+		else if (_dt >= WWVB_ENDOFBIT)
+		{
+#if defined(USE_OC1A)
+			OCR1A = PWM_LOW;
+#elif defined(USE_OC1B)
+			OCR1B = PWM_LOW;
+#endif
+			_is_high = false;
 			// increment the frame indices
 			if (++frame_index == 60)
 			{
@@ -369,6 +430,7 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 #else
 		bitSet(TCCR1B, CS10); // Set clock prescalar to 1 (16MHz or 8MHz - as per the base clock)
 #endif
+		t0 = millis();
 	}
 
 	boolean is_active()
@@ -384,7 +446,7 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 		_MM = MM_;
 		_YY = YY_;
 	}
-	
+
 	void set_time(const uint8_t &_mins, const uint8_t &_hour,
 		const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
 		const uint8_t _daylight_savings = 0)
@@ -409,7 +471,7 @@ TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
 
 		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
 		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, _mins, _hour);
-		
+
 		// set the correct frame bits
 		set_time();
 	}
@@ -439,11 +501,11 @@ private:
 
 		set_day(t_DD);
 		set_month(t_MM);
-		
+
 		set_doty(_doty);
 		//set_dut1(); // only need to do this once at setup as we set dut1 to all zeros
 		set_year(t_YY);
-		
+
 		set_misc(_is_leap_year, _daylight_savings);
 	}
 	void set_mins(uint8_t _mins)
@@ -512,7 +574,7 @@ private:
 			else { DOTY[7] = 0; }
 			if (_doty >= 10) { _doty -= 10; DOTY[8] = 1; }
 			else { DOTY[8] = 0; }
-			
+
 			if (_doty >= 8) { _doty -= 8; DUT1[0] = 1; }
 			else { DUT1[0] = 0; }
 			if (_doty >= 4) { _doty -= 4; DUT1[1] = 1; }
@@ -568,7 +630,7 @@ private:
 			else { YEAR[7] = 0; }
 			if (_year >= 10) { _year -= 10; YEAR[8] = 1; }
 			else { YEAR[8] = 0; }
-			
+
 			if (_year >= 8) { _year -= 8; MISC[0] = 1; }
 			else { MISC[0] = 0; }
 			if (_year >= 4) { _year -= 4; MISC[1] = 1; }
@@ -613,6 +675,7 @@ private:
 		case 49: // end YEAR
 		case 59: // end MISC, end frame
 			WWVB_LOWTIME = WWVB_MARKER;
+			WWVB_LOWTIME_ms = pulse_width_ms[2];
 			return;
 		}
 
@@ -621,26 +684,32 @@ private:
 		if (frame_index < 10) // MINS
 		{
 			WWVB_LOWTIME = pulse_width[MINS[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[MINS[subframe_index]];
 		}
 		else if (frame_index < 20) // HOUR
 		{
 			WWVB_LOWTIME = pulse_width[HOUR[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[HOUR[subframe_index]];
 		}
 		else if (frame_index < 30) // DOTY
 		{
 			WWVB_LOWTIME = pulse_width[DOTY[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[DOTY[subframe_index]];
 		}
 		else if (frame_index < 40) // DUT1
 		{
 			WWVB_LOWTIME = pulse_width[DUT1[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[DUT1[subframe_index]];
 		}
 		else if (frame_index < 50) // YEAR
 		{
 			WWVB_LOWTIME = pulse_width[YEAR[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[YEAR[subframe_index]];
 		}
 		else if (frame_index < 60) // MISC
 		{
 			WWVB_LOWTIME = pulse_width[MISC[subframe_index]];
+			WWVB_LOWTIME_ms = pulse_width_ms[MISC[subframe_index]];
 		}
 	}
 };

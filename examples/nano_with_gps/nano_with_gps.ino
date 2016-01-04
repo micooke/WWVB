@@ -15,7 +15,7 @@ SDA C4 |A4          D5~| D5
 SCL C5 |A5          D4 | D4
        |A6          D3~| D3 INT1
        |A7          D2 | D2 INT0
-       |5V         GND |   
+       |5V         GND |
     C6 |RST        RST | C6
        |GND        TX1 | D0
        |Vin        RX1 | D1 |<= GPS Tx (Hardware Serial)
@@ -39,24 +39,16 @@ SCL C5 |A5          D4 | D4
 wwvb wwvb_tx;
 
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
-#if defined(USE_OC1A)
-ISR(TIMER1_COMPA_vect)
-#elif defined(USE_OC1B)
-ISR(TIMER1_COMPB_vect)
-#endif
+ISR(TIMER1_OVF_vect)
+
 {
 	cli(); // disable interrupts
 	wwvb_tx.interrupt_routine();
 	sei(); // enable interrupts
 }
 
-//#define USE_SOFTWARE_SERIAL
-#ifdef USE_SOFTWARE_SERIAL
 #include <SoftwareSerial.h>
-SoftwareSerial ttl(7,8); // Tx pin (8) not used in this example
-#else
-#define ttl Serial
-#endif
+SoftwareSerial ttl(7, 8); // Tx pin (8) not used in this example
 
 #include <ATtinyGPS.h>
 ATtinyGPS gps;
@@ -72,6 +64,7 @@ void setup()
 	wwvb_tx.setup();
 
 	ttl.begin(9600);
+
 }
 
 void loop()
@@ -84,13 +77,13 @@ void loop()
 
 	// If there is new data AND its a whole minute
 	// set the wwvb time
-	if (gps.new_data() & (gps.ss == 0) )
+	if (gps.new_data() & (gps.ss == 0))
 	{
-			// Yeah im ignoring the last parameter to set whether we are in daylight savings time
-			wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
-			if (!wwvb_tx.is_active())
-			{
-				wwvb_tx.start();
-			}
+		// Yeah im ignoring the last parameter to set whether we are in daylight savings time
+		wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+		if (!wwvb_tx.is_active())
+		{
+			wwvb_tx.start();
+		}
 	}
 }
