@@ -1,8 +1,8 @@
 #ifndef wwvb_h
 #define wwvb_h
 /*
-Designed for Arduino with the ATtiny85 @ 16MHz / 5V
-(but should work with 3.3V / 5V leonardo/micro or uno/nano)
+Designed for the ATtiny85 @ 16MHz / 5V
+( but works on the ATmega328p and ATmega32u4 )
 
 WWVB: 60Khz carrier, Amplitude modulated to Vp -17dB for signal low
 
@@ -19,40 +19,7 @@ Author/s: Mark Cooke, Martin Sniedze
 License: MIT license (see LICENSE file)
 */
 /*
------------------------------------------------------------------------------
-Minimum example (see minimum.ino)
------------------------------------------------------------------------------
-
-#include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
-#include <wwvb.h> // include before ATtinyGPS.h
-wwvb wwvb_tx;
-
-// The ISR sets the PWM pulse width to correspond with the WWVB bit
-#if defined(USE_OC1A)
-ISR(TIMER1_COMPA_vect)
-#elif defined(USE_OC1B)
-ISR(TIMER1_COMPB_vect)
-#endif
-{
-	cli(); // disable interrupts
-	wwvb_tx.interrupt_routine();
-	sei(); // enable interrupts
-}
-
-void setup()
-{
-	wwvb_tx.setup();
-
-	// Note: The default is to include DateString & TimeString tools (see wwvb.h)
-	wwvb_tx.set_time(__DATE__, __TIME__);
-	wwvb_tx.start(); // Thats it
-}
-void loop()
-{
-	delay(1); // Recommended
-}
-
------------------------------------------------------------------------------
+See minimum.ino for a brief example that sets the wwvb time to the compile time
 */
 
 #include <Arduino.h>
@@ -61,6 +28,10 @@ void loop()
 // (i.e. to set the clock to the compiled time)
 #if !defined(REQUIRE_TIMEDATESTRING)
 #define REQUIRE_TIMEDATESTRING 1
+#endif
+
+#if !defined(_DEBUG)
+#define _DEBUG 0
 #endif
 
 #include <TimeDateTools.h>
@@ -72,8 +43,6 @@ void loop()
 #endif
 
 // wwvb class - note, you will need to specify the interrupt routine in your main sketch
-
-
 class wwvb
 {
 private:
@@ -91,25 +60,25 @@ private:
 
 	//                            0   1   2   3   4   5   6   7   8   9
 	//                            M  40  20  10   0   8   4   2   1   M
-	volatile boolean MINS[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
+	volatile bool MINS[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 	//                            -   -  20  10   0   8   4   2   1   M
-	volatile boolean HOUR[10] = { 0,  0,  1,  1,  0,  1,  1,  1,  1,  1 };
+	volatile bool HOUR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 	//                            -   - 200 100   0  80  40  20  10   M
-	volatile boolean DOTY[10] = { 0,  0,  1,  1,  0,  1,  1,  1,  1,  1 };
+	volatile bool DOTY[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 	//                            8   4   2   1   -   -   +   -   +   M
-	volatile boolean DUT1[10] = { 1,  1,  1,  1,  0,  0,  0,  1,  0,  1 };
+	volatile bool DUT1[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 	//                            0.8 0.4 0.2 0.1 -  80  40  20  10   M
-	volatile boolean YEAR[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
+	volatile bool YEAR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 	//                            8   4   2   1   - LYI LSW   2   1   M
-	volatile boolean MISC[10] = { 1,  1,  1,  1,  0,  1,  1,  1,  1,  1 };
+	volatile bool MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 
 	// temp variables
 	volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
 	// internal variables, set by set_time ONLY
-	volatile uint8_t mins_, hour_; // 00-59, 00-23
+	//volatile uint8_t mins_, hour_; // 00-59, 00-23
 	volatile uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
 	volatile uint16_t doty_; // 1=1 Jan, 365 = 31 Dec (or 366 in a leap year)
-	volatile boolean is_leap_year_ = 0;
+	volatile bool is_leap_year_ = 0;
 	volatile uint8_t daylight_savings_ = 0; // 00 - no, 10 - starts today, 11 - yes, 01 - ends today 
 
 	// LOW :   Low for 0.2s / 1.0s (20% low duty cycle)
@@ -128,14 +97,75 @@ private:
 	volatile uint16_t isr_count = 0;
 	volatile uint8_t frame_index, subframe_index;
 
-	volatile boolean _is_active = false;
-	volatile boolean _is_high = false;
+	volatile bool _is_active = false;
+	volatile bool _is_high = false;
 
 	uint32_t t0 = 0;
 public:
+	volatile uint8_t mins_, hour_; // 00-59, 00-23
+	volatile bool is_incremented = false;
+	
+	void raw()
+	{
+#if (_DEBUG > 0)
+		for (uint8_t fI = 0; fI < 60; ++fI)
+		{
+			uint8_t sI = fI % 10;
+			uint8_t subframe = fI / 10;
+
+			switch (fI)
+			{
+				// markers
+			case 0:  // start frame
+				Serial.println(F("INDX: 0   1   2   3   4   5   6   7   8   9"));
+				Serial.println(F("MINS: M  40  20  10   0   8   4   2   1   M"));
+				Serial.print(F("   [  M ")); break;
+			case 9:  // end MINS
+				Serial.print(F("  M]\n"));
+				Serial.println(F("HOUR: -   -  20  10   0   8   4   2   1   M"));
+				Serial.print(F("   [")); break;
+			case 19: // end HOUR
+				Serial.print(F("  M]\n"));
+				Serial.println(F("DOTY: -   - 200 100   0  80  40  20  10   M"));
+				Serial.print(F("   [")); break;
+			case 29: // end DOTY
+				Serial.print(F("  M]\n"));
+				Serial.println(F("DUT1: 8   4   2   1   -   -  (+) (-) (+)  M"));
+				Serial.print(F("   [")); break;
+			case 39: // end DUT1
+				Serial.print(F("  M]\n"));
+				Serial.println(F("YEAR: 0.8 0.4 0.2 0.1 -  80  40  20  10   M"));
+				Serial.print(F("   [")); break;
+			case 49: // end YEAR
+				Serial.print(F("  M]\n"));
+				Serial.println(F("MISC: 8   4   2   1   - LYI LSW   2   1   M"));
+				Serial.print(F("   [")); break;
+			case 59: // end MISC, end frame
+				Serial.println(F("  M]\n")); break;
+			default:
+				switch (subframe)
+				{
+				case 0:
+					Serial.print(MINS[sI]); break;
+				case 1:
+					Serial.print(HOUR[sI]); break;
+				case 2:
+					Serial.print(DOTY[sI]); break;
+				case 3:
+					Serial.print(DUT1[sI]); break;
+				case 4:
+					Serial.print(YEAR[sI]); break;
+				default:
+					Serial.print(MISC[sI]); break;
+				}
+				Serial.print(' '); break;
+			}
+		}
+#endif
+	}
+	
 	void setup()
 	{
-
 		/*
 		Setup the count values that correspond to 0.2s,0.5s,0.8s for wwvb encoding [LOW,HIGH,MARKER]
 		i.e.  .0 .1 .2 .3 .4 .5 .6 .7 .8 .9 1.0 (1s = END OF BIT)
@@ -325,6 +355,8 @@ public:
 
 				// reset the frame_index
 				frame_index = 0;
+				
+				is_incremented = true;				
 			}
 			subframe_index = frame_index % 10;
 			set_lowTime();
@@ -433,10 +465,57 @@ public:
 		t0 = millis();
 	}
 
-	boolean is_active()
+	bool is_active()
 	{
 		return _is_active;
 	}
+	
+	void print_time()
+	{
+#if (_DEBUG > 0)
+		Serial.println(F("internal state"));
+		print_datetime(mins_, hour_, DD_, MM_, YY_);
+
+		Serial.print("raw bits\n");
+		raw();
+
+		Serial.print("decoded state\n");
+		uint8_t mins = get_mins();
+		uint8_t hour = get_hour();
+		uint16_t doty = get_doty();
+		uint8_t year = get_year();
+
+		float dut1 = get_dut1();
+		bool is_ly, is_ls;
+		uint8_t ds;
+		get_misc(is_ly, is_ls, ds);
+
+		uint8_t day, month;
+		from_day_of_the_year<uint8_t>(doty, day, month, is_ly);
+
+		print_datetime(mins, hour, day, month, year);
+		
+		Serial.print(F("dut1 = "));
+		Serial.println(dut1);
+		Serial.print(F("leap year = "));
+		if (is_ly) { Serial.println(F("true")); } else { Serial.println(F("false")); }
+		Serial.print(F("leap second = "));
+		if (is_ls) { Serial.println(F("true")); } else { Serial.println(F("false")); }
+		Serial.print(F("daylight savings time "));
+		switch(ds)
+		{
+			case 0:
+			Serial.println(F("is not in effect")); break;
+			case 1:
+			Serial.println(F("ends today")); break;
+			case 2:
+			Serial.println(F("begins today")); break;
+			default:
+			Serial.println(F("is in effect")); break;
+		}
+#endif
+	}
+
 	void get_time(volatile uint8_t &_mins, volatile uint8_t &_hour,
 		volatile uint8_t &_DD, volatile uint8_t &_MM, volatile uint8_t &_YY)
 	{
@@ -488,10 +567,32 @@ public:
 	}
 #endif
 private:
+	void print_datetime(uint8_t _mins, uint8_t _hour,
+		uint8_t _DD, uint8_t _MM, uint8_t _YY)
+	{
+#if (_DEBUG > 0)
+		if (_hour < 10) { Serial.print('0'); }
+		Serial.print(_hour);
+		Serial.print(':');
+		if (_mins < 10) { Serial.print('0'); }
+		Serial.print(_mins);
+		Serial.print(F(" on "));
+		if (_DD < 10) { Serial.print('0'); }
+		Serial.print(_DD);
+		Serial.print('/');
+		if (_MM < 10) { Serial.print('0'); }
+		Serial.print(_MM);
+		Serial.print(F("/20"));
+		if (_YY < 10) { Serial.print('0'); }
+		Serial.println(_YY);
+#endif
+	}
+
+	/// set
 	// this function performs no range-checking of variables
 	void set_time(const uint8_t _daylight_savings = 0)
 	{
-		boolean _is_leap_year = is_leap_year(2000 + t_YY);
+		bool _is_leap_year = is_leap_year(2000 + t_YY);
 		uint16_t _doty = to_day_of_the_year<volatile uint8_t>(t_DD, t_MM, _is_leap_year);
 
 		// Note: these set commands are conditional on a difference 
@@ -503,7 +604,7 @@ private:
 		set_month(t_MM);
 
 		set_doty(_doty);
-		//set_dut1(); // only need to do this once at setup as we set dut1 to all zeros
+		set_dut1(); // only need to do this once at setup as we set dut1 to all zeros
 		set_year(t_YY);
 
 		set_misc(_is_leap_year, _daylight_savings);
@@ -529,7 +630,7 @@ private:
 			else { MINS[6] = 0; }
 			if (_mins >= 2) { _mins -= 2; MINS[7] = 1; }
 			else { MINS[7] = 0; }
-			MINS[8] = _mins;
+			MINS[8] = (_mins & 0x01);
 		}
 	}
 	void set_hour(uint8_t _hour)
@@ -551,7 +652,7 @@ private:
 			else { HOUR[6] = 0; }
 			if (_hour >= 2) { _hour -= 2; HOUR[7] = 1; }
 			else { HOUR[7] = 0; }
-			HOUR[8] = _hour;
+			HOUR[8] = (_hour & 0x01);
 		}
 	}
 	void set_doty(uint16_t _doty)
@@ -581,15 +682,17 @@ private:
 			else { DUT1[1] = 0; }
 			if (_doty >= 2) { _doty -= 2; DUT1[2] = 1; }
 			else { DUT1[2] = 0; }
-			DUT1[3] = _doty;
+			DUT1[3] = (_doty & 0x01);
 		}
 	}
 	void set_dut1()
 	{
 		// DUT1             0   1   2   3   4   5   6   7   8   9
-		//                  8   4   2   1   -   -   +   -   +   M
-		DUT1[7] = 1; // set sign to -ve
+		//                  8   4   2   1   -   -  (+) (-) (+)  M
+		DUT1[6] = 1; // set sign to +ve
+		DUT1[8] = 1; // set sign to +ve
 
+		
 		// clear the first 4 values
 		YEAR[0] = 0;
 		YEAR[1] = 0;
@@ -637,10 +740,10 @@ private:
 			else { MISC[1] = 0; }
 			if (_year >= 2) { _year -= 2; MISC[2] = 1; }
 			else { MISC[2] = 0; }
-			MISC[3] = _year;
+			MISC[3] = (_year & 0x01);
 		}
 	}
-	void set_misc(const boolean &_is_leap_year, const uint8_t &_daylight_savings)
+	void set_misc(const bool &_is_leap_year, const uint8_t &_daylight_savings)
 	{
 		// set leap year, leap second and daylight saving time info
 		//                  0   1   2   3   4   5   6   7   8   9
@@ -651,7 +754,7 @@ private:
 
 			MISC[5] = _is_leap_year;
 		}
-		//MISC[5] = 0; // Ignore leap second
+		MISC[6] = 0; // Ignore leap second
 		if (daylight_savings_ != _daylight_savings)
 		{
 			daylight_savings_ = _daylight_savings;
@@ -660,6 +763,84 @@ private:
 			MISC[8] = _daylight_savings & 0x1;
 		}
 
+	}
+	/// get
+	uint8_t get_mins()
+	{
+		// MINS
+		// 0   1   2   3   4   5   6   7   8   9
+		// M  40  20  10   0   8   4   2   1   M
+		uint8_t _temp = MINS[1]*40 + MINS[2]*20 + MINS[3]*10 + MINS[4]*0;
+		_temp += MINS[5]*8 + MINS[6]*4 + MINS[7]*2 + MINS[8]*1;
+		return _temp;
+	}
+	uint8_t get_hour()
+	{
+		// HOUR
+		// 0   1   2   3   4   5   6   7   8   9
+		// -   -  20  10   0   8   4   2   1   M
+		uint8_t _temp = HOUR[2]*20 + HOUR[3]*10 + HOUR[4]*0;
+		_temp += HOUR[5]*8 + HOUR[6]*4 + HOUR[7]*2 + HOUR[8]*1;
+		return _temp;
+	}
+	uint16_t get_doty()
+	{
+		// DOTY
+		// 0   1   2   3   4   5   6   7   8   9
+		// -   - 200 100   0  80  40  20  10   M
+		// DUT1
+		// 0   1   2   3   4   5   6   7   8   9
+		// 8   4   2   1   -   -   +   -   +   M
+		
+		uint16_t _temp = DOTY[2]*200 + DOTY[3]*100 + DOTY[4]*0;
+		_temp += DOTY[5]*80 + DOTY[6]*40 + DOTY[7]*20 + DOTY[8]*10;
+		_temp += DUT1[0]*8 + DUT1[1]*4 + DUT1[2]*2 + DUT1[3]*1;
+		
+		return _temp;
+	}
+	float get_dut1()
+	{
+		// DUT1
+		// 0   1   2   3   4   5   6   7   8   9
+		// 8   4   2   1   -   -   +   -   +   M
+		// YEAR
+		//  0   1   2   3   4   5   6   7   8   9
+		// 0.8 0.4 0.2 0.1  -  80  40  20  10   M
+		float _temp = YEAR[0]*0.8 + YEAR[1]*0.4 + YEAR[2]*0.2 + YEAR[3]*0.1;
+		
+		if (DUT1[7])
+		{
+			_temp = -_temp;
+		}
+		else if (!(DUT1[6] & DUT1[8]))
+		{
+			_temp = -999; // ERROR
+		}
+		
+		return _temp;
+	}
+
+	uint8_t get_year()
+	{
+		// YEAR
+		//  0   1   2   3   4   5   6   7   8   9
+		// 0.8 0.4 0.2 0.1  -  80  40  20  10   M
+		// MISC
+		// 0   1   2   3   4   5   6   7   8   9
+		// 8   4   2   1   - LYI LSW   2   1   M
+		
+		uint8_t _temp = YEAR[5]*80 + YEAR[6]*40 + YEAR[7]*20 + YEAR[8]*10;
+		_temp += MISC[0]*8 + MISC[1]*4 + MISC[2]*2 + MISC[3]*1;
+		return _temp;
+	}
+	void get_misc(bool &_is_leap_year, bool &_is_leap_second, uint8_t &_daylight_savings)
+	{
+		// MISC
+		// 0   1   2   3   4   5   6   7   8   9
+		// 8   4   2   1   - LYI LSW   2   1   M
+		_is_leap_year = MISC[5];
+		_is_leap_second = MISC[6];
+		_daylight_savings = ((MISC[7] << 1) & 0x2) | (MISC[8] & 0x01);
 	}
 	void set_lowTime()
 	{

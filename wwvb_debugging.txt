@@ -1,0 +1,27 @@
+ARDUINO
+11:40 on 08/01/2016
+dut1 = 0.00
+leap year = true
+leap second = false
+daylight savings time is not in effect
+
+[0 1 2 3 4 5 6 7 8 9]
+[M 1 0 0 0 0 0 0 0 M]
+[0 0 0 1 0 0 0 0 1 M]
+[0 0 0 0 0 0 0 0 0 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
+
+SALEAE LOGIC8 (measured @ 24MHz)   
+   frame time: 60.4983s
+subframe time: 10.0831s
+     bit time: 1.00830s
+   pulse freq: 60.150kHz (16.6667us), 60.000kHz (16.6250us)
+[0 1 2 3 4 5 6 7 8 9]
+[M 1 0 0 0 0 0 0 0 M]
+[0 0 0 1 0 0 0 0 1 M]
+[0 0 0 0 0 0 0 0 0 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
