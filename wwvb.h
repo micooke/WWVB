@@ -58,24 +58,24 @@ private:
 	* 1 bit of data per second
 	*/
 
-	//                            0   1   2   3   4   5   6   7   8   9
-	//                            M  40  20  10   0   8   4   2   1   M
+	//                         0   1   2   3   4   5   6   7   8   9
+	//                         M  40  20  10   0   8   4   2   1   M
 	volatile bool MINS[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                            -   -  20  10   0   8   4   2   1   M
+	//                         -   -  20  10   0   8   4   2   1   M
 	volatile bool HOUR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                            -   - 200 100   0  80  40  20  10   M
+	//                         -   - 200 100   0  80  40  20  10   M
 	volatile bool DOTY[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                            8   4   2   1   -   -   +   -   +   M
+	//                         8   4   2   1   -   -   +   -   +   M
 	volatile bool DUT1[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                            0.8 0.4 0.2 0.1 -  80  40  20  10   M
+	//                         0.8 0.4 0.2 0.1 -  80  40  20  10   M
 	volatile bool YEAR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                            8   4   2   1   - LYI LSW   2   1   M
+	//                         8   4   2   1   - LYI LSW   2   1   M
 	volatile bool MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 
 	// temp variables
 	volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
 	// internal variables, set by set_time ONLY
-	//volatile uint8_t mins_, hour_; // 00-59, 00-23
+	volatile uint8_t mins_, hour_; // 00-59, 00-23
 	volatile uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
 	volatile uint16_t doty_; // 1=1 Jan, 365 = 31 Dec (or 366 in a leap year)
 	volatile bool is_leap_year_ = 0;
@@ -102,9 +102,6 @@ private:
 
 	uint32_t t0 = 0;
 public:
-	volatile uint8_t mins_, hour_; // 00-59, 00-23
-	volatile bool is_incremented = false;
-	
 	void raw()
 	{
 #if (_DEBUG > 0)
@@ -355,8 +352,6 @@ public:
 
 				// reset the frame_index
 				frame_index = 0;
-				
-				is_incremented = true;				
 			}
 			subframe_index = frame_index % 10;
 			set_lowTime();
@@ -470,7 +465,7 @@ public:
 		return _is_active;
 	}
 	
-	void print_time()
+	void debug_time()
 	{
 #if (_DEBUG > 0)
 		Serial.println(F("internal state"));
@@ -547,12 +542,16 @@ public:
 	{
 		// get the current time
 		get_time(t_mm, t_hh, t_DD, t_MM, t_YY);
-
+		
 		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, _mins, _hour);
-
+		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, _hour, _mins, 0);
+		
 		// set the correct frame bits
 		set_time();
+	}
+	void print()
+	{
+		print_datetime(mins_, hour_, DD_, MM_, YY_);
 	}
 #if( REQUIRE_TIMEDATESTRING == 1)
 	void set_time(char dateString[], char timeString[], const uint8_t _daylight_savings = 0)
@@ -567,27 +566,6 @@ public:
 	}
 #endif
 private:
-	void print_datetime(uint8_t _mins, uint8_t _hour,
-		uint8_t _DD, uint8_t _MM, uint8_t _YY)
-	{
-#if (_DEBUG > 0)
-		if (_hour < 10) { Serial.print('0'); }
-		Serial.print(_hour);
-		Serial.print(':');
-		if (_mins < 10) { Serial.print('0'); }
-		Serial.print(_mins);
-		Serial.print(F(" on "));
-		if (_DD < 10) { Serial.print('0'); }
-		Serial.print(_DD);
-		Serial.print('/');
-		if (_MM < 10) { Serial.print('0'); }
-		Serial.print(_MM);
-		Serial.print(F("/20"));
-		if (_YY < 10) { Serial.print('0'); }
-		Serial.println(_YY);
-#endif
-	}
-
 	/// set
 	// this function performs no range-checking of variables
 	void set_time(const uint8_t _daylight_savings = 0)
@@ -806,7 +784,7 @@ private:
 		// YEAR
 		//  0   1   2   3   4   5   6   7   8   9
 		// 0.8 0.4 0.2 0.1  -  80  40  20  10   M
-		float _temp = YEAR[0]*0.8 + YEAR[1]*0.4 + YEAR[2]*0.2 + YEAR[3]*0.1;
+		float _temp = YEAR[0]*0.8f + YEAR[1]*0.4f + YEAR[2]*0.2f + YEAR[3]*0.1f;
 		
 		if (DUT1[7])
 		{

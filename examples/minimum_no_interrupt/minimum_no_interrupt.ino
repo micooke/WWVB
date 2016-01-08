@@ -52,40 +52,10 @@ unsigned char LED_PIN = 13;
 boolean LED_TOGGLE = false;
 #endif
 
-#if (_DEBUG == 2)
-volatile boolean toggle = false;
-
-void dummy_interrupt()
-{
-	if (toggle)
-	{
-		OCR1A = 65;
-	}
-	else
-	{
-		OCR1A = 6;
-	}
-	toggle = !toggle;
-}
-
-#endif
-
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
 ISR(TIMER1_OVF_vect)
 {
-	cli(); // disable interrupts
-	
-	#if (_DEBUG == 2)
-  if ((++count.interrupt) == 60)
-	{
-		count.interrupt = 0;
-		dummy_interrupt();
-	}
-  #else
-	wwvb_tx.interrupt_routine();
-	#endif
-	
-	sei(); // enable interrupts
+	;
 }
 
 void setup()
@@ -109,6 +79,8 @@ void setup()
 }
 void loop()
 {
+  wwvb_tx.step();
+  
   #if (_DEBUG > 0)
 	digitalWrite(LED_PIN, LOW);
 	delay(100);
