@@ -12,11 +12,9 @@ for the 'low' signal
 
 Copyright (c) 2015 Mark Cooke, Martin Sniedze
 
-Author/s: Mark Cooke, Martin Sniedze
-* gihtub.com/micooke
-* gihtub.com/mr-sneezy
+Author/s: [Mark Cooke](https://www.github.com/micooke), [Martin Sniedze](https://www.github.com/mr-sneezy)
 
-License: MIT license (see LICENSE file)
+License: MIT license (see LICENSE file).
 */
 /*
 See minimum.ino for a brief example that sets the wwvb time to the compile time
@@ -24,7 +22,7 @@ See minimum.ino for a brief example that sets the wwvb time to the compile time
 
 #include <Arduino.h>
 
-// If not defined, require TimeString and DateString conversion
+// If not already defined, assume that we require TimeString and DateString conversion
 // (i.e. to set the clock to the compiled time)
 #if !defined(REQUIRE_TIMEDATESTRING)
 #define REQUIRE_TIMEDATESTRING 1
@@ -91,16 +89,11 @@ private:
 	volatile uint16_t WWVB_LOWTIME;
 	uint8_t PWM_LOW, PWM_HIGH;
 
-	uint16_t pulse_width_ms[3] = { 200, 500, 800 };
-	uint16_t WWVB_LOWTIME_ms = 200;
-
-	volatile uint16_t isr_count = 0;
+	volatile int32_t isr_count = 0;
 	volatile uint8_t frame_index, subframe_index;
 
 	volatile bool _is_active = false;
 	volatile bool _is_high = false;
-
-	uint32_t t0 = 0;
 public:
 	void raw()
 	{
@@ -175,31 +168,43 @@ public:
 
 		Some math to work out how much we will be off by
 		(Matlab code)
-		%8MHz
+		% Using an 8MHz clock
 		Ts = 1/(8e6/(2*66));
 		tics = round([100,200,500,800,1000]*1e-3/ Ts);
 		fprintf('[%d,%d,%d,%d,%d] -> [%0.6f,%0.6f,%0.6f,%0.6f,%0.6f]\n',tics, tics*Ts  - [.1,.2,.5,.8,1.0]);
 		% [6061,12121,30303,48485,60606] -> [0.000006,-0.000004,-0.000001,0.000002,-0.000001]
-		% Note: uint16_t maximum value is 65535 - so we can store the counter in 16 bits
-
-		Ts = 1/(16e6/(2*133)); % This is the same Ts as the ATtiny85 in Fast PWM
+		
+		% Using a 16MHz clock
+		% Note: This is the Ts for AtMega328p/AtMega32u4 which ends up being the same Ts as for ATtiny85 
+		% in Fast PWM whether its 8MHz or 16MHz as we divide down the internal PLL source
+		Ts = 1/(16e6/(2*133)); 
 		tics = round([100,200,500,800,1000]*1e-3/ Ts);
 		fprintf('[%d,%d,%d,%d,%d] -> [%0.6f,%0.6f,%0.6f,%0.6f,%0.6f]\n',tics, tics*Ts  - [.1,.2,.5,.8,1.0]);
 		% [6015,12030,30075,48120,60150] -> [-0.000001,-0.000001,-0.000003,-0.000005,-0.000006]
-		% Note: uint16_t maximum value is 65535 - so we can store the counter in 16 bits
+		
+		% Note: uint16_t maximum value is 65535, we need a max of 60606 (8MHz  ATmega328p, ATmega32u4) or 
+		% 60150 (ATtiny85 or 16MHz ATmega328p, ATmega32u4)so we can store the counter in 16 bits
 		*/
 
-#if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__) | (F_CPU == 16000000)
-		WWVB_LOW = 12121;
-		WWVB_HIGH = 30303;
-		WWVB_MARKER = 48485;
-		WWVB_ENDOFBIT = 60606;
-#else // Its a 8MHz clock
-		WWVB_LOW = 12030;
-		WWVB_HIGH = 30075;
-		WWVB_MARKER = 48120;
-		WWVB_ENDOFBIT = 60150;
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+		// Note: calibration values appended
+		WWVB_LOW = 12030;// + 20; // 19.62
+		WWVB_HIGH = 30075;// + 55; // 55.94
+		WWVB_MARKER = 48120;// + 58; // 57.56
+		WWVB_ENDOFBIT = 60150;// + 68; // 67.85 ()
+#elif (F_CPU == 16000000)
+		// Note: calibration values appended
+		WWVB_LOW = 12030;// - 15; // 15.52
+		WWVB_HIGH = 30075;// - 28; // 27.91
+		WWVB_MARKER = 48120;// - 41; // 41.02
+		WWVB_ENDOFBIT = 60150;// - 44; // 43.85
+#else // Its a 8MHz clock on a non-AT
+		WWVB_LOW = 12121 - 0;
+		WWVB_HIGH = 30303 - 0
+		WWVB_MARKER = 48485 - 0;
+		WWVB_ENDOFBIT = 60606 - 0;
 #endif
+		
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
 
 		pulse_width[0] = WWVB_LOW;
@@ -207,50 +212,47 @@ public:
 		pulse_width[2] = WWVB_MARKER;
 
 		// Generate 60kHz carrier
-#if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__)
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		/*
 		OC0A | !OC1A : 0 PB0 MOSI PWM 8b
 		OC1A |  OC0B : 1 PB1 MISO PWM 8b
 		OC1B : 4 PB4
 		!OC1B : 3 PB3
 		*/
-		// The ATtiny is setup to use Fast PWM mode off the internal PLL
-		//
-		// Also, note that i use PB1, PB4 for the ATtiny as these are the same numbers 
-		// as their digital pin, and PB1 etc are printed on the digistump silkscreen
-
-		bitSet(PLLCSR, PLLE);// Start PLL
-		while (bitRead(PLLCSR, PLOCK) == 0); // wait until the PLL is locked
-		bitSet(PLLCSR, PCKE);// Set clock source to asynchronous PCK
-
-		PWM_HIGH = 66; // ~50% duty cycle
-		PWM_LOW = 6; // ~5% duty cycle
-					 // PLL clock (PCK) = 64MHz
-					 // PWM frequency settings: ATtiny25/45/85 datasheet p99
-		OCR1C = 132; // Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
+		PLLCSR = 0; // clear all flags, use synchronous clock CK
+		
+#if (F_CPU == 16000000)
+		TCCR1 = _BV(CS12) 		// Internal (non-PLL) CK selected
+			  | _BV(CS11);		// prescalar = 2 (16MHz/2 = 8MHz)
+#elif (F_CPU == 8000000)
+		TCCR1 = _BV(CS12) 		// Internal (non-PLL) CK selected
+			  | _BV(CS10); 		// prescalar = 1 (8MHz/1 = 8MHz)
+#endif
+		
+		PWM_HIGH = 66; 			// ~50% duty cycle
+		PWM_LOW = 6; 			// ~5% duty cycle
+		OCR1C = 132; 			// Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
 
 #if defined(USE_OC1A)
-		pinMode(PB1, OUTPUT);// setup OC1A PWM pin as output
+		pinMode(PB1, OUTPUT);	// setup OC1A PWM pin as output
 
-		TCCR1 |= _BV(PWM1A) // Clear timer/counter after compare match to OCR1C
-			| _BV(COM1A1);   // Clear the OC1A output line after match
+		TCCR1 |= _BV(PWM1A)  	// Clear timer/counter after compare match to OCR1C
+			  | _BV(COM1A1); 	// Clear the OC1A output line after match
 
-		TIMSK |= _BV(OCIE1A);// enable compare match interrupt on Timer1
+		TIMSK |= _BV(OCIE1A);	// enable compare match interrupt on Timer1
 
-		OCR1A = PWM_LOW; // Set pulse width to 50% duty cycle
+		OCR1A = PWM_LOW; 		// Set pulse width to 5% duty cycle
 #elif defined(USE_OC1B)
-		pinMode(PB4, OUTPUT);// setup OC1B PWM pin as output
+		pinMode(PB4, OUTPUT);	// setup OC1B PWM pin as output
+		
+		GTCCR = _BV(PWM1B) 		// Clear timer/counter after compare match to OCR1C
+			  | _BV(COM1B1);	// Clear the OC1B output line after match
 
-		GTCCR = _BV(PWM1B) // Clear timer/counter after compare match to OCR1C
-			| _BV(COM1B1);   // Clear the OC1B output line after match
+		TIMSK |= _BV(OCIE1B);	// enable compare match interrupt on Timer1
 
-		TIMSK |= _BV(OCIE1B);// enable compare match interrupt on Timer1
-
-		OCR1B = PWM_LOW; // Set pulse width to 50% duty cycle
+		OCR1B = PWM_LOW; 		// Set pulse width to 5% duty cycle
 #endif
 #else // This is a catchall for any other chip, but ive only tested it against the chips listed below
-//#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__) | \
-//       defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
 		/*
 		ATmega32u4
 		OC0A |  OC1C : 11 PB7 PWM 8/16b
@@ -355,57 +357,8 @@ public:
 			}
 			subframe_index = frame_index % 10;
 			set_lowTime();
-
-			// reset the isr_count (poor-mans timer, but its synced to the 60kHz)
-			isr_count = 0;
-		}
-	}
-
-	void step()
-	{
-		/*
-		This routine is checked at each counter overflow - i.e. at 60kHz
-
-		if the 60kHz PWM pulse has been low for the correct time
-		1. set the PWM pulse high
-
-		if instead the PWM pulse has finished sending the data bit (1second has elapsed)
-		2.1. set the PWM pulse low
-		2.2. increment to the next bit in the subframe
-		2.3. set the next WWVB_LOWTIME
-		*/
-		uint32_t _dt = millis() - t0;
-
-		if ((_is_high == false) & (_dt >= WWVB_LOWTIME))
-		{
-#if defined(USE_OC1A)
-			OCR1A = PWM_HIGH;
-#elif defined(USE_OC1B)
-			OCR1B = PWM_HIGH;
-#endif
-			_is_high = true;
-		}
-		else if (_dt >= WWVB_ENDOFBIT)
-		{
-#if defined(USE_OC1A)
-			OCR1A = PWM_LOW;
-#elif defined(USE_OC1B)
-			OCR1B = PWM_LOW;
-#endif
-			_is_high = false;
-			// increment the frame indices
-			if (++frame_index == 60)
-			{
-				// increment to the next minute
-				add_time(1, 0);
-
-				// reset the frame_index
-				frame_index = 0;
-			}
-			subframe_index = frame_index % 10;
-			set_lowTime();
-
-			// reset the isr_count (poor-mans timer, but its synced to the 60kHz)
+			
+			// reset the isr_count (poor-mans timer, but its synced to the ~60kHz clock)
 			isr_count = 0;
 		}
 	}
@@ -442,7 +395,7 @@ public:
 	{
 		_is_active = false;
 
-#if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__)
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		bitClear(TCCR1, CS12); // Set clock prescalar to 000 (STOP Timer/Clock)
 #else
 		bitClear(TCCR1B, CS10); // Set clock prescalar to 000 (STOP Timer/Clock)
@@ -452,12 +405,11 @@ public:
 	{
 		_is_active = true;
 
-#if defined(__AVR_ATtiny85__) | defined(__AVR_ATtiny45__)
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		bitSet(TCCR1, CS12); // Set clock prescalar to 8 (64MHz / 8 = 8MHz)
 #else
 		bitSet(TCCR1B, CS10); // Set clock prescalar to 1 (16MHz or 8MHz - as per the base clock)
 #endif
-		t0 = millis();
 	}
 
 	bool is_active()
@@ -834,7 +786,6 @@ private:
 		case 49: // end YEAR
 		case 59: // end MISC, end frame
 			WWVB_LOWTIME = WWVB_MARKER;
-			WWVB_LOWTIME_ms = pulse_width_ms[2];
 			return;
 		}
 
@@ -843,32 +794,26 @@ private:
 		if (frame_index < 10) // MINS
 		{
 			WWVB_LOWTIME = pulse_width[MINS[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[MINS[subframe_index]];
 		}
 		else if (frame_index < 20) // HOUR
 		{
 			WWVB_LOWTIME = pulse_width[HOUR[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[HOUR[subframe_index]];
 		}
 		else if (frame_index < 30) // DOTY
 		{
 			WWVB_LOWTIME = pulse_width[DOTY[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[DOTY[subframe_index]];
 		}
 		else if (frame_index < 40) // DUT1
 		{
 			WWVB_LOWTIME = pulse_width[DUT1[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[DUT1[subframe_index]];
 		}
 		else if (frame_index < 50) // YEAR
 		{
 			WWVB_LOWTIME = pulse_width[YEAR[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[YEAR[subframe_index]];
 		}
 		else if (frame_index < 60) // MISC
 		{
 			WWVB_LOWTIME = pulse_width[MISC[subframe_index]];
-			WWVB_LOWTIME_ms = pulse_width_ms[MISC[subframe_index]];
 		}
 	}
 };

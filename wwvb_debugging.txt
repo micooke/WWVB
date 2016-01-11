@@ -15,8 +15,8 @@ daylight savings time is not in effect
 
 SALEAE LOGIC8 (measured @ 24MHz)   
    frame time: 60.4983s
-subframe time: 10.0831s
-     bit time: 1.00830s
+subframe time: 10.083001s
+     bit time: 1.00834s, 1.008287s
    pulse freq: 60.150kHz (16.6667us), 60.000kHz (16.6250us)
 [0 1 2 3 4 5 6 7 8 9]
 [M 1 0 0 0 0 0 0 0 M]
@@ -25,3 +25,25 @@ subframe time: 10.0831s
 [1 0 0 0 0 0 1 0 1 M]
 [0 0 0 0 0 0 0 0 1 M]
 [0 1 1 0 0 1 0 0 0 M]
+
+0.2s : 0.2018s
+0.5s : 0.5043s
+0.8s : 0.8067s
+
+Gaah, i was using the 8MHz values in place of the 16MHz...
+Arduino Nano : ATmega328p @ 16MHz
+   frame :  60s in 60.043944s
+subframe :  10s in 10.007304s
+     bit :   1s in  1.000729s
+  marker : 0.8s in  0.800682s
+    high : 0.5s in  0.500464s
+     low : 0.2s in  0.200258s
+
+ATtiny85 @ 16MHz
+   frame :  60s in 59.904427s
+subframe :  10s in  9.986918s
+     bit :   1s in  0.998872s
+  marker : 0.8s in  0.799043s
+    high : 0.5s in  0.49907s
+     low : 0.2s in  0.199673s
+
