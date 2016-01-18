@@ -47,3 +47,47 @@ subframe :  10s in  9.986918s
     high : 0.5s in  0.49907s
      low : 0.2s in  0.199673s
 
+120s capture
+wwvb set to: 12:30:49 on Jan 18 2016
+
+My findings:
+1. The captured output is the internal state, and it decodes properly.
+2. Minute auto-increment works
+3. The timing is slightly out (20.268ms in 60s, 40.867ms in 120s) - ill adjust this
+
+frame 1
+set:
+[0 1 2 3 4 5 6 7 8 9]
+[M 0 1 1 0 0 0 0 1 M]
+[0 0 0 1 0 0 0 1 0 M]
+[0 0 0 0 0 0 0 0 1 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
+
+captured:
+[0 1 2 3 4 5 6 7 8 9]
+[M 0 1 1 0 0 0 0 1 M]
+[0 0 0 1 0 0 0 1 0 M]
+[0 0 0 0 0 0 0 0 1 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
+
+set:
+[0 1 2 3 4 5 6 7 8 9]
+[M 0 1 1 0 0 0 1 0 M]
+[0 0 0 1 0 0 0 1 0 M]
+[0 0 0 0 0 0 0 0 1 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
+
+captured:
+[0 1 2 3 4 5 6 7 8 9]
+[M 0 1 1 0 0 0 1 0 M]
+[0 0 0 1 0 0 0 1 0 M]
+[0 0 0 0 0 0 0 0 1 M]
+[1 0 0 0 0 0 1 0 1 M]
+[0 0 0 0 0 0 0 0 1 M]
+[0 1 1 0 0 1 0 0 0 M]
