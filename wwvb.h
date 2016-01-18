@@ -106,7 +106,7 @@ class wwvb
    // MARKER: Low for 0.8s / 1.0s
    // hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
    
-   uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
+   volatile uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
    uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
 
    volatile uint16_t WWVB_LOWTIME;
@@ -118,7 +118,7 @@ class wwvb
    volatile bool _is_active = false;
    volatile bool _is_high = false;
    public:
-   int16_t WWVB_EOB_CAL[2] = {10, 20};
+   volatile int16_t WWVB_EOB_CAL[2] = {84, 85}; // 60.000086 using the Arduino Nano ATmega328p
    volatile bool _is_odd_bit = true;
    volatile bool end_of_frame = false; // sticky bit - see minimum.ino for example use
    void raw()
