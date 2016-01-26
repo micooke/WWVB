@@ -31,6 +31,19 @@ See minimum.ino for a brief example that sets the wwvb time to the compile time
 /*
 Default ATtiny85 to use OC1B as OC1A uses an SPI pin - you may want to use SPI and wwvb
 
+Recommended debug setup
+Use a RC (low-pass) filter to view the message (p1) as well as the modulated carrier (p0)
+
+T = RC = 1/(2*pi*fc)
+where;
+T: Time constant
+fc: cutoff frequency
+
+for: R = 110 ohm, C = 1uF
+fc = 1/(2*pi*RC) = 1.45kHz (the carrier is 60kHz, the modulation is about 1 to 5 Hz)
+
+WWVB_OUT |--(p0)--[110R]--(p1)--[1uF]--|GND
+
 -----------+-----------+-----------------
 Chip       | #define   | WWVB_OUT
 -----------+-----------+-----------------
@@ -44,7 +57,7 @@ ATmega328p | *USE_OC1A | D9
 ATmega328p |  USE_OC1B | D10
 -----------+-----------+-----------------
 
-* Default setup; as desribed below
+* Default setup
 */
 #if !(defined(USE_OC1A) | defined(USE_OC1B))
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
@@ -65,7 +78,7 @@ ATmega328p |  USE_OC1B | D10
 // wwvb class - note, you will need to specify the interrupt routine in your main sketch
 class wwvb
 {
-   private:
+private:
    /*
    WWVB format:
    http://www.nist.gov/pml/div688/grp40/wwvb.cfm
@@ -94,6 +107,10 @@ class wwvb
    
    // temp variables
    volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
+   
+   // timezone variables   
+   int8_t timezone_HH, timezone_MM;
+   
    // internal variables, set by set_time ONLY
    volatile uint8_t mins_, hour_; // 00-59, 00-23
    volatile uint8_t DD_, MM_, YY_; // 1-31, 1-12, 00-99
@@ -108,7 +125,8 @@ class wwvb
    
    volatile uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
    uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
-
+   int16_t WWVB_EOB_CAL[2] = { 0,  0};
+      
    volatile uint16_t WWVB_LOWTIME;
    uint8_t PWM_LOW, PWM_HIGH;
 
@@ -117,10 +135,28 @@ class wwvb
 
    volatile bool _is_active = false;
    volatile bool _is_high = false;
-   public:
-   volatile int16_t WWVB_EOB_CAL[2] = {84, 85}; // 60.000086 using the Arduino Nano ATmega328p
    volatile bool _is_odd_bit = true;
+   
+public:
    volatile bool end_of_frame = false; // sticky bit - see minimum.ino for example use
+
+   wwvb() : timezone_HH(0), timezone_MM(0)
+   {
+		#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+		set_1s_calibration(0,0);
+		#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+		set_1s_calibration(-15,-16);
+		#elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
+		set_1s_calibration(84, 85); // 60.000086
+		#endif   
+   }
+   
+   void set_1s_calibration(const int16_t &_c0, const int16_t &_c1)
+   {
+	   WWVB_EOB_CAL[0] = _c0;
+	   WWVB_EOB_CAL[1] = _c1;
+   }
+   
    void raw()
    {
       #if (_DEBUG > 0)
@@ -297,7 +333,7 @@ class wwvb
       #if (F_CPU == 16000000)
       ICR1 = 133; // Set PWM to 60kHz (16MHz / (2*133)) = 60150Hz
       // Yes, its 133 and not 132 because the compare is double sided : 0->133->132->1
-      PWM_HIGH = 65; // ~50% duty cycle
+      PWM_HIGH = 66; // ~50% duty cycle
       PWM_LOW = 6; // ~5% duty cycle
       #elif (F_CPU == 8000000)
       ICR1 = 67; // Set PWM to 60.6kHz (8MHz / (2*66)) = 60606Hz
@@ -507,6 +543,28 @@ class wwvb
       _YY = YY_;
    }
 
+   void setPWM_LOW(const uint8_t &_value)
+   {
+	   // dont allow it to be set higher than the max 8 bit value
+	   PWM_LOW = min(_value, 255);
+   }
+   
+   void setPWM_HIGH(const uint8_t &_value)
+   {
+	   // dont allow it to be set higher than the max 8 bit value
+	   PWM_HIGH = min(_value, 255);
+   }
+   
+   void setTimezone(const int8_t &_hour, const int8_t &_mins)
+   {
+	   timezone_HH = _hour;
+	   timezone_MM = _mins;
+   }
+   void getTimezone(int8_t &_hour, int8_t &_mins)
+   {
+      _hour = timezone_HH;
+      _mins = timezone_MM;
+   } 
    void set_time(const uint8_t &_mins, const uint8_t &_hour,
    const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
    const uint8_t _daylight_savings = 0)
@@ -519,7 +577,7 @@ class wwvb
       t_YY = _YY;
 
       //increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-      addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, 0, 1, 0);
+      addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, timezone_HH, timezone_MM+1, 0);
 
       // set the correct frame bits
       set_time(_daylight_savings);

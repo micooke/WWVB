@@ -1,8 +1,32 @@
 /*
 Minimum.ino
 Set the wwvb time to the compile time.
-The wwvb interrupt routine auto-increments the minute at the end of each frame 
+The wwvb interrupt routine auto-increments the minute at the end of each frame
 
+Arduino Nano
+       +----+=====+----+
+       |    | USB |    |
+SCK B5 |D13 +-----+D12 | B4 MISO
+       |3V3        D11~| B3 MOSI
+       |Vref       D10~| B2 SS
+    C0 |A0          D9~| B1 |=> WWVB ANTENNA
+    C1 |A1          D8 | B0 
+    C2 |A2          D7 | D7 
+    C3 |A3          D6~| D6
+SDA C4 |A4          D5~| D5
+SCL C5 |A5          D4 | D4
+       |A6          D3~| D3 INT1
+       |A7          D2 | D2 INT0
+       |5V         GND |
+    C6 |RST        RST | C6
+       |GND        TX1 | D0
+       |Vin        RX1 | D1
+       |  5V MOSI GND  |
+       |   [] [] []    |
+       |   [] [] []    |
+       | MISO SCK RST  |
+       +---------------+
+	   
 Recommended debug setup
 Use a RC (low-pass) filter to view the message (p1) as well as the modulated carrier (p0)
 
@@ -28,6 +52,8 @@ ATmega32u4 |  USE_OC1B | D10
 ATmega328p | *USE_OC1A | D9
 ATmega328p |  USE_OC1B | D10
 -----------+-----------+-----------------
+
+* Default setup
 */
 
 #include <Arduino.h>
@@ -35,6 +61,8 @@ ATmega328p |  USE_OC1B | D10
 
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 #define _DEBUG 0
+#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+#define _DEBUG 1
 #else
 #define _DEBUG 2
 #endif
@@ -65,9 +93,7 @@ wwvb wwvb_tx;
 ISR(TIMER1_OVF_vect)
 {
    cli(); // disable interrupts
-   
    wwvb_tx.interrupt_routine();
-   
    sei(); // enable interrupts
 }
 
@@ -75,10 +101,15 @@ void setup()
 {
    wwvb_tx.setup();
 
+   // set the timezone before you set your time
+   // if you are using CST (UTC - 6:00), set the timezone to 6,0 (below)
+   wwvb_tx.setTimezone(6,0);
+   wwvb_tx.setPWM_LOW(0);
+   
    #if (REQUIRE_TIMEDATESTRING == 1)
    wwvb_tx.set_time(__DATE__, __TIME__);
    #endif
-   
+    
    #if (_DEBUG == 2)
    Serial.begin(9600);
    while(!Serial);
@@ -94,7 +125,6 @@ void setup()
    
    #if (_DEBUG > 0)
    pinMode(LED_PIN, OUTPUT);
-   digitalWrite(LED_PIN, HIGH);
    #endif
 
    wwvb_tx.start(); // Thats it
@@ -107,13 +137,18 @@ void loop()
    {
       wwvb_tx.end_of_frame = false; // clear the EOF bit
       #if (_DEBUG == 2)
-	  wwvb_tx.debug_time();
+      wwvb_tx.debug_time();
       Serial.println();
       #endif
-      
+   }
+   else
+   {
+      /*
       digitalWrite(LED_PIN, HIGH);
       delay(100);
       digitalWrite(LED_PIN, LOW);
-	}
+      delay(100);
+      */
+   }
    #endif
 }
