@@ -78,7 +78,7 @@ ATmega328p |  USE_OC1B | D10
 // wwvb class - note, you will need to specify the interrupt routine in your main sketch
 class wwvb
 {
-private:
+   private:
    /*
    WWVB format:
    http://www.nist.gov/pml/div688/grp40/wwvb.cfm
@@ -108,7 +108,7 @@ private:
    // temp variables
    volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
    
-   // timezone variables   
+   // timezone variables
    int8_t timezone_HH, timezone_MM;
    
    // internal variables, set by set_time ONLY
@@ -126,7 +126,7 @@ private:
    volatile uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
    uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
    int16_t WWVB_EOB_CAL[2] = { 0,  0};
-      
+   
    volatile uint16_t WWVB_LOWTIME;
    uint8_t PWM_LOW, PWM_HIGH;
 
@@ -137,24 +137,32 @@ private:
    volatile bool _is_high = false;
    volatile bool _is_odd_bit = true;
    
-public:
+   public:
    volatile bool end_of_frame = false; // sticky bit - see minimum.ino for example use
 
    wwvb() : timezone_HH(0), timezone_MM(0)
    {
-		#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-		set_1s_calibration(0,0);
-		#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-		set_1s_calibration(-15,-16);
-		#elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
-		set_1s_calibration(84, 85); // 60.000086
-		#endif   
+      #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+      set_1s_calibration(0,0);
+      #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+      set_1s_calibration(-15,-16);
+      #elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
+      set_1s_calibration(84, 85); // 60.000086
+      #endif
    }
    
    void set_1s_calibration(const int16_t &_c0, const int16_t &_c1)
    {
-	   WWVB_EOB_CAL[0] = _c0;
-	   WWVB_EOB_CAL[1] = _c1;
+      WWVB_EOB_CAL[0] = _c0;
+      WWVB_EOB_CAL[1] = _c1;
+   }
+   
+   void set(const uint16_t &_low, const uint16_t &_high, const uint16_t &_marker, const uint16_t &_eob)
+   {
+      WWVB_LOW = _low;
+      WWVB_HIGH = _high;
+      WWVB_MARKER = _marker;
+      WWVB_ENDOFBIT = _eob;
    }
    
    void raw()
@@ -241,14 +249,6 @@ public:
       % Note: uint16_t maximum value is 65535, we need a max of 60606 (8MHz  ATmega328p, ATmega32u4) or
       % 60150 (ATtiny85 or 16MHz ATmega328p, ATmega32u4)so we can store the counter in 16 bits
       */
-	  /*
-      #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-      // Note: calibration values appended
-      WWVB_LOW = 12030;// + 20; // 19.62
-      WWVB_HIGH = 30075;// + 55; // 55.94
-      WWVB_MARKER = 48120;// + 58; // 57.56
-      WWVB_ENDOFBIT = 60150;// + 68; // 67.85 ()
-	  */
       #if (F_CPU == 16000000)
       WWVB_LOW = 12030;
       WWVB_HIGH = 30075;
@@ -383,7 +383,7 @@ public:
       2.2. increment to the next bit in the subframe
       2.3. set the next WWVB_LOWTIME
       */
-	  
+      
       if ((_is_high == false) & (++isr_count >= WWVB_LOWTIME))
       {
          #if defined(USE_OC1A)
@@ -395,9 +395,9 @@ public:
       }
       else if (isr_count >= (WWVB_ENDOFBIT + WWVB_EOB_CAL[_is_odd_bit]))
       {
-		 // flip _is_odd_bit
-		 _is_odd_bit = !_is_odd_bit;
-		 
+         // flip _is_odd_bit
+         _is_odd_bit = !_is_odd_bit;
+         
          #if defined(USE_OC1A)
          OCR1A = PWM_LOW;
          #elif defined(USE_OC1B)
@@ -408,7 +408,7 @@ public:
          // increment the frame indices
          if (++frame_index == 60)
          {
-			// increment to the next minute
+            // increment to the next minute
             add_time(1, 0);
 
             // reset the frame_index
@@ -417,13 +417,13 @@ public:
             // indicate that we have finished sending a frame
             end_of_frame = true;
 
-			/*
-			The calibration value = ((time delta)*(ms->s)*(frequency in Hz))/(60 seconds)
-			16MHz : dt*((1/1000)*60150)/60)=1.0025*dt
-			 8MHz : dt*((1/1000)*60606)/60)=1.0101*dt
-			 
-			// This approach didnt work - so a static calibration value is used
-			*/
+            /*
+            The calibration value = ((time delta)*(ms->s)*(frequency in Hz))/(60 seconds)
+            16MHz : dt*((1/1000)*60150)/60)=1.0025*dt
+            8MHz : dt*((1/1000)*60606)/60)=1.0101*dt
+            
+            // This approach didnt work - so a static calibration value is used
+            */
          }
          subframe_index = frame_index % 10;
          set_lowTime();
@@ -545,26 +545,26 @@ public:
 
    void setPWM_LOW(const uint8_t &_value)
    {
-	   // dont allow it to be set higher than the max 8 bit value
-	   PWM_LOW = min(_value, 255);
+      // dont allow it to be set higher than the max 8 bit value
+      PWM_LOW = min(_value, 255);
    }
    
    void setPWM_HIGH(const uint8_t &_value)
    {
-	   // dont allow it to be set higher than the max 8 bit value
-	   PWM_HIGH = min(_value, 255);
+      // dont allow it to be set higher than the max 8 bit value
+      PWM_HIGH = min(_value, 255);
    }
    
    void setTimezone(const int8_t &_hour, const int8_t &_mins)
    {
-	   timezone_HH = _hour;
-	   timezone_MM = _mins;
+      timezone_HH = _hour;
+      timezone_MM = _mins;
    }
    void getTimezone(int8_t &_hour, int8_t &_mins)
    {
       _hour = timezone_HH;
       _mins = timezone_MM;
-   } 
+   }
    void set_time(const uint8_t &_mins, const uint8_t &_hour,
    const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
    const uint8_t _daylight_savings = 0)

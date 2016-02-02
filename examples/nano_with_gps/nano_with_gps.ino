@@ -54,6 +54,7 @@ ATmega328p |  USE_OC1B | D10
 * Default setup
 */
 
+#define SetupGPS // Sends PMTK strings to setup the GPS
 
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 #define _DEBUG 0
@@ -70,13 +71,15 @@ _DEBUG == 2: Set wwvb time to the compile time, use the wwvb interrupt, blink th
 */
 #if (_DEBUG > 0)
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-unsigned char LED_PIN = 1; // Use PB1 the Tx LED on the digistump
+uint8_t LED_PIN = 1; // Use PB1 the Tx LED on the digistump
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-unsigned char LED_PIN = SS;
+uint8_t LED_PIN = SS;
 #elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
-unsigned char LED_PIN = 13;
+uint8_t LED_PIN = 13;
 #endif
-boolean LED_TOGGLE = false;
+uint16_t LED_DELAY = 100;
+bool LED_TOGGLE = false;
+uint32_t t0;
 #endif
 
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
@@ -93,7 +96,7 @@ ISR(TIMER1_OVF_vect)
 }
 
 #include <SoftwareSerial.h>
-SoftwareSerial ttl(7, 8); // Tx pin (8) not used in this example
+SoftwareSerial ttl(7, 8);// Rx,Tx pin
 
 #include <ATtinyGPS.h>
 ATtinyGPS gps;
@@ -104,6 +107,8 @@ uint8_t count = 0;
 uint32_t t1;
 boolean isLow = false;
 
+char c = '\0';
+
 void setup()
 {
    wwvb_tx.setup();
@@ -111,16 +116,58 @@ void setup()
    // set the timezone before you set your time
    // if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
    wwvb_tx.setTimezone(-6,0);
+   // wwvb_tx.set_1s_calibration(84, 85); // 64.76363
+   //wwvb_tx.set_1s_calibration(0,0); // 65.837075
+   //wwvb_tx.set_1s_calibration(-100,-100); // 65.78, 1.15
+   //wwvb_tx.set_1s_calibration(-500,-500); // 1.08
+   //wwvb_tx.set_1s_calibration(-1000,-1000); // 10.80, 1.056
+   //wwvb_tx.set_1s_calibration(-5000,-5000); // 10.054484s
+   //wwvb_tx.set_1s_calibration(-4000,-4000); // 10.220166s
+   //wwvb_tx.set_1s_calibration(-5329,-5329); // 10.00525s
+   //wwvb_tx.set_1s_calibration(-5400,-5400); // 10.000169s
+   //wwvb_tx.set_1s_calibration(-5500,-5500); // 9.977221s
+   //wwvb_tx.set_1s_calibration(-5410,-5410); // 9.983661s
+   wwvb_tx.set_1s_calibration(-5400,-5400); // 9.9903362
    wwvb_tx.setPWM_LOW(0);
-   
-   ttl.begin(9600);
-   
+      
    #if (_DEBUG > 0)
    Serial.begin(9600);
    while(!Serial);
-
+   t0 = millis();
    pinMode(LED_PIN, OUTPUT);
    #endif
+   
+#ifdef SetupGPS
+	ttl.begin(9600);
+   // Setup the GPS
+	// send RMC & GGA only
+	//                     GLL, RMC, VTG, GGA, GSA,
+	ttl.println("$PMTK314,   0,   1,   0,   1,   0,"
+		// GSV, GRS, GST,    ,    ,
+		"    0,   0,   0,   0,   0,"
+		//   ,   ,    , MALM,MEPH,
+		"    0,   0,   0,   0,   0,"
+		//MDGP,MDBG, ZDA,MCHN*checksum   
+		"    0,   0,   0,   0*28");
+	//ttl.println("$PMTK314,-1*04"); // reset NMEA sequences to system default
+
+	//1Hz update rate
+	ttl.println("$PMTK220,1000*1F");
+	//ttl.println("$PMTK220,100*2F");//10Hz update rate
+	//ttl.println("$PMTK220,200*2C");//5Hz update rate
+	
+   // 115200 BAUD (6.6% for bare minimum)
+	//ttl.println("$PMTK251,9600*17");
+   ttl.println("$PMTK251,14400*29");
+   //ttl.println("$PMTK251,19200*22");
+   //ttl.println("$PMTK251,38400*27");
+   //ttl.println("$PMTK251,57600*2C");
+   //ttl.println("$PMTK251,115200*1F");
+	//ttl.println("$PMTK251,0*28\n"); // reset BAUD rate to system default
+   //ttl.end();
+   delay(500);
+   ttl.begin(14400);
+#endif
 }
 
 void loop()
@@ -128,7 +175,7 @@ void loop()
    // if we are receiving gps data, parse it
    while (ttl.available())
    {
-      char c = ttl.read();
+      c = ttl.read();
       gps.parse(c);
       
       #if (_DEBUG == 2)
@@ -137,9 +184,9 @@ void loop()
       #endif
    }
 
-   #if (_DEBUG == 2)
    if (gps.new_data())
    {
+    #if (_DEBUG == 2)
       switch(gps.ss)
       {
          case 0:
@@ -156,34 +203,34 @@ void loop()
             Serial.print("Satellites : "); Serial.println(gps.satellites);
             Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
             Serial.print("DD/MM/YY: "); Serial.print(gps.DD); Serial.print("/"); Serial.print(gps.MM); Serial.print("/"); Serial.println(gps.YY); 
-      }
-   }   
+      } 
    #endif
    // set the wwvb time : If there is new data AND its a whole minute
-   if (gps.new_data() & (gps.ss == 0))
-   {
-      if (gps.IsValid)
-      {
-         #if (_DEBUG > 0)
-         Serial.println("##### GPS SYNCED #####");
-         Serial.print("IsValid    : "); Serial.println(gps.IsValid);
-         Serial.print("Quality    : "); Serial.println(gps.quality);
-         Serial.print("Satellites : "); Serial.println(gps.satellites);
-         Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
-         #endif
-         
-         // Yeah im ignoring the last parameter to set whether we are in daylight savings time
-         wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
-         if (!wwvb_tx.is_active())
-         {
-            wwvb_tx.start();
-         }
-         #if (_DEBUG > 0)
-         Serial.println("##### From GPS #####");
-         wwvb_tx.debug_time();
-         Serial.println();
-         #endif
-      }
+     if (gps.ss == 0)
+     {
+        if (gps.IsValid)
+        {
+           #if (_DEBUG > 0)
+           Serial.println("##### GPS SYNCED #####");
+           Serial.print("IsValid    : "); Serial.println(gps.IsValid);
+           Serial.print("Quality    : "); Serial.println(gps.quality);
+           Serial.print("Satellites : "); Serial.println(gps.satellites);
+           Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
+           #endif
+           
+           // Yeah im ignoring the last parameter to set whether we are in daylight savings time
+           wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+           if (!wwvb_tx.is_active())
+           {
+              wwvb_tx.start();
+           }
+           #if (_DEBUG > 0)
+           Serial.println("##### From GPS #####");
+           wwvb_tx.debug_time();
+           Serial.println();
+           #endif
+        }
+     }
    }
    
    #if (_DEBUG > 0)
@@ -191,18 +238,20 @@ void loop()
    if(wwvb_tx.end_of_frame == true)
    {
       wwvb_tx.end_of_frame = false; // clear the EOF bit
-      #if (_DEBUG > 0)
+      #if (_DEBUG == 2)
       Serial.println("##### From End Of Frame #####");
       wwvb_tx.debug_time();
       Serial.println();
       #endif
    }
-   else
+   if(gps.satellites == 0)
    {
-      digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-      delay(100);
+      if (millis() - t0 >= LED_DELAY)
+      {
+         t0 = millis();
+         digitalWrite(LED_PIN, LED_TOGGLE);
+         LED_TOGGLE != LED_TOGGLE;   
+      }
    }
    #endif
 }
