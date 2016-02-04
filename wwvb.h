@@ -124,7 +124,7 @@ class wwvb
    // hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
    
    volatile uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
-   uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
+   volatile uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
    int16_t WWVB_EOB_CAL[2] = { 0,  0};
    
    volatile uint16_t WWVB_LOWTIME;
@@ -163,6 +163,10 @@ class wwvb
       WWVB_HIGH = _high;
       WWVB_MARKER = _marker;
       WWVB_ENDOFBIT = _eob;
+      
+      pulse_width[0] = WWVB_LOW;
+      pulse_width[1] = WWVB_HIGH;
+      pulse_width[2] = WWVB_MARKER;
    }
    
    void raw()

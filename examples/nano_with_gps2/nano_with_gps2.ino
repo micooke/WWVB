@@ -56,7 +56,7 @@ ATmega328p |  USE_OC1B | D10
 
 #define SetupGPS // Sends PMTK strings to setup the GPS
 
-bool sync_gpstime = true;
+bool sync_gpstime = false;
 
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 #define _DEBUG 0
@@ -72,13 +72,7 @@ _DEBUG == 1: Set wwvb time to the compile time, use the wwvb interrupt, blink th
 _DEBUG == 2: Set wwvb time to the compile time, use the wwvb interrupt, blink the led, VERBOSE serial output
 */
 #if (_DEBUG > 0)
-#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-uint8_t LED_PIN = 1; // Use PB1 the Tx LED on the digistump
-#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-uint8_t LED_PIN = SS;
-#elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
 uint8_t LED_PIN = 13;
-#endif
 uint16_t LED_DELAY = 100;
 bool LED_TOGGLE = false;
 uint32_t t0;
@@ -115,13 +109,20 @@ void setup()
 {
    wwvb_tx.setup();
    
-   // set the timezone before you set your time
-   // if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
-   wwvb_tx.setTimezone(-6,0);
-   // Keep the default calibration values
-   // wwvb_tx.set_1s_calibration(84, 85); // 64.76363
+   // Set the wwvb calibration values
+   wwvb_tx.set_1s_calibration(0, 0); // 64.76363
    wwvb_tx.setPWM_LOW(0);
+   //wwvb_tx.set(12030,30075,48120,60150); // What they should be
+   wwvb_tx.set(12030,30075,47600,54461); // Set the values for WWVB pulse widths
+   // Note these values are stored in a uint16_t with a max of 65536.
+   // If greater than this value is required, the 1s calibration value 
+   // is added to this so set that appropriately
    
+   // set the timezone before you set your time
+   wwvb_tx.setTimezone(0,0); // Default state - this line is not needed
+   // if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
+   gps.setTimezone(10,30); // +9:30 Adelaide time + 1:00 for DST
+      
    #if (_DEBUG > 0)
    Serial.begin(9600);
    while(!Serial);
@@ -158,8 +159,13 @@ void setup()
    //ttl.println("$PMTK251,115200*1F");
    //ttl.println("$PMTK251,0*28\n"); // reset BAUD rate to system default
    //ttl.end();
-   delay(500);
+   delay(100);
    ttl.begin(14400);
+   #endif
+   
+   #if (_DEBUG > 0)
+   Serial.print("Waiting on first GPS sync ");
+   t0 = millis();
    #endif
    
    // first up : sync the wwvb_tx to the gps
@@ -170,11 +176,30 @@ void setup()
       {
          gps.parse(ttl.read());
       }
+      #if (_DEBUG > 0)
+      if (millis() - t0 > 1000)
+      {
+         Serial.print(".");
+         t0 = millis();
+      }
+      #endif
    }   
    
    // Yeah im ignoring the last parameter to set whether we are in daylight savings time
    wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
    wwvb_tx.start();
+   
+   #if (_DEBUG > 0)
+   Serial.println(" GPS synced!");
+   
+   Serial.println("##### GPS SYNCED #####");
+   Serial.print("IsValid    : "); Serial.println(gps.IsValid);
+   Serial.print("Quality    : "); Serial.println(gps.quality);
+   Serial.print("Satellites : "); Serial.println(gps.satellites);
+   Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
+   
+   Serial.println("WWVB transmit started");
+   #endif
 }
 
 void loop()
@@ -184,11 +209,30 @@ void loop()
    {
       if (sync_gpstime)
       {
-         while (ttl.available())
+         // Parse gps data until we have new data
+         while(gps.new_data() == false)
          {
-            gps.parse(ttl.read());
+            while (ttl.available())
+            {
+               gps.parse(ttl.read());
+            }
          }
-         sync_gpstime = false;
+         
+         // If the gps data is valid, sync the wwvb time
+         if ( gps.IsValid )
+         {
+            #if (_DEBUG > 0)
+            Serial.println("##### GPS SYNCED #####");
+            Serial.print("IsValid    : "); Serial.println(gps.IsValid);
+            Serial.print("Quality    : "); Serial.println(gps.quality);
+            Serial.print("Satellites : "); Serial.println(gps.satellites);
+            Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
+            #endif
+                     
+            // Yeah im ignoring the last parameter to set whether we are in daylight savings time
+            wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+            sync_gpstime = false;
+         }      
       }
       else
       {
@@ -203,30 +247,25 @@ void loop()
    //
    // In other words, wwvb will transmit for 9 minutes, then turn off and sync for a minute
    //
-   if (gps.new_data())
+   if (gps.new_data() & (gps.IsValid) & (gps.ss == 0) )
    {
-      if ( (gps.IsValid) & (gps.ss == 0) )
+      switch (gps.mm % 10)
       {
-         switch (gps.mm % 10)
-         {
-            case 0:
-            #if (_DEBUG > 0)
-            Serial.println("##### GPS SYNCED #####");
-            Serial.print("IsValid    : "); Serial.println(gps.IsValid);
-            Serial.print("Quality    : "); Serial.println(gps.quality);
-            Serial.print("Satellites : "); Serial.println(gps.satellites);
-            Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
-            #endif
+         case 0:
+         #if (_DEBUG > 0)
+         Serial.println("WWVB started");
+         #endif
             
-            // Yeah im ignoring the last parameter to set whether we are in daylight savings time
-            wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
-            wwvb_tx.start();
-            break;
-            case 9:
-            wwvb_tx.stop();
-            sync_gpstime = true;
-            break;
-         }
+         wwvb_tx.start();
+         break;
+         case 9:
+         #if (_DEBUG > 0)
+         Serial.println("WWVB stopped");
+         #endif
+         
+         wwvb_tx.stop();
+         sync_gpstime = true;
+         break;
       }
    }
    
@@ -238,7 +277,7 @@ void loop()
       {
          t0 = millis();
          digitalWrite(LED_PIN, LED_TOGGLE);
-         LED_TOGGLE != LED_TOGGLE;
+         LED_TOGGLE = !LED_TOGGLE;
       }
    }
    else
