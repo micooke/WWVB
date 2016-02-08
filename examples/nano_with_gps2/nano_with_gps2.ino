@@ -86,9 +86,7 @@ wwvb wwvb_tx;
 ISR(TIMER1_OVF_vect)
 
 {
-   cli(); // disable interrupts
    wwvb_tx.interrupt_routine();
-   sei(); // enable interrupts
 }
 
 #include <SoftwareSerial.h>
@@ -110,10 +108,10 @@ void setup()
    wwvb_tx.setup();
    
    // Set the wwvb calibration values
-   wwvb_tx.set_1s_calibration(0, 0); // 64.76363
+   //wwvb_tx.set_1s_calibration(0, 0); // 59.952668
    wwvb_tx.setPWM_LOW(0);
    //wwvb_tx.set(12030,30075,48120,60150); // What they should be
-   wwvb_tx.set(12030,30075,47600,54461); // Set the values for WWVB pulse widths
+   //wwvb_tx.set(12030,30075,47600,54461); // Set the values for WWVB pulse widths
    // Note these values are stored in a uint16_t with a max of 65536.
    // If greater than this value is required, the 1s calibration value 
    // is added to this so set that appropriately
@@ -121,7 +119,7 @@ void setup()
    // set the timezone before you set your time
    wwvb_tx.setTimezone(0,0); // Default state - this line is not needed
    // if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
-   gps.setTimezone(10,30); // +9:30 Adelaide time + 1:00 for DST
+   //gps.setTimezone(10,30); // +9:30 Adelaide time + 1:00 for DST
       
    #if (_DEBUG > 0)
    Serial.begin(9600);
@@ -130,8 +128,12 @@ void setup()
    pinMode(LED_PIN, OUTPUT);
    #endif
    
-   ttl.begin(9600);
-   
+   //ttl.begin(14400);
+   // ublox
+   // send RMC & GGA only
+   //ttl.println("");
+   //1Hz update rate
+   //ttl.println(""");
    #ifdef SetupGPS
    // Setup the GPS
    // send RMC & GGA only
@@ -150,17 +152,15 @@ void setup()
    //ttl.println("$PMTK220,100*2F");//10Hz update rate
    //ttl.println("$PMTK220,200*2C");//5Hz update rate
    
-   // 115200 BAUD (6.6% for bare minimum)
    //ttl.println("$PMTK251,9600*17");
-   ttl.println("$PMTK251,14400*29");
+   //ttl.println("$PMTK251,14400*29"); // Fastest we can go with the current parsing method with only minimal over-writing of serial buffer data (TinyGPS++ may be better?)
    //ttl.println("$PMTK251,19200*22");
    //ttl.println("$PMTK251,38400*27");
    //ttl.println("$PMTK251,57600*2C");
    //ttl.println("$PMTK251,115200*1F");
    //ttl.println("$PMTK251,0*28\n"); // reset BAUD rate to system default
-   //ttl.end();
    delay(100);
-   ttl.begin(14400);
+   ttl.begin(9600);
    #endif
    
    #if (_DEBUG > 0)
@@ -170,7 +170,7 @@ void setup()
    
    // first up : sync the wwvb_tx to the gps
    // wait until we get gps data
-   while ( !(gps.new_data() & (gps.IsValid) & (gps.ss == 0)) )
+   while ( !((gps.IsValid) & (gps.ss == 0)) )
    {
       while (ttl.available())
       {
@@ -183,7 +183,7 @@ void setup()
          t0 = millis();
       }
       #endif
-   }   
+   }
    
    // Yeah im ignoring the last parameter to set whether we are in daylight savings time
    wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
@@ -209,7 +209,7 @@ void loop()
    {
       if (sync_gpstime)
       {
-         // Parse gps data until we have new data
+          // Parse gps data until we have new data
          while(gps.new_data() == false)
          {
             while (ttl.available())
@@ -233,10 +233,6 @@ void loop()
             wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
             sync_gpstime = false;
          }      
-      }
-      else
-      {
-         ttl.flush(); // clear the buffer if we arent interested in syncing
       }
    }
    

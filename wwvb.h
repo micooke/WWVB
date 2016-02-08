@@ -388,7 +388,7 @@ class wwvb
       2.3. set the next WWVB_LOWTIME
       */
       
-      if ((_is_high == false) & (++isr_count >= WWVB_LOWTIME))
+      if ((_is_high == false) & (++isr_count == WWVB_LOWTIME))
       {
          #if defined(USE_OC1A)
          OCR1A = PWM_HIGH;
@@ -397,10 +397,10 @@ class wwvb
          #endif
          _is_high = true;
       }
-      else if (isr_count >= (WWVB_ENDOFBIT + WWVB_EOB_CAL[_is_odd_bit]))
+      else if (isr_count == (WWVB_ENDOFBIT + WWVB_EOB_CAL[_is_odd_bit]))
       {
-         // flip _is_odd_bit
-         _is_odd_bit = !_is_odd_bit;
+         // reset the isr_count (poor-mans timer, but its synced to the ~60kHz clock)
+         isr_count = 0;
          
          #if defined(USE_OC1A)
          OCR1A = PWM_LOW;
@@ -408,9 +408,15 @@ class wwvb
          OCR1B = PWM_LOW;
          #endif
          _is_high = false;
-
+         
+         subframe_index = ++frame_index % 10;
+         set_lowTime();
+         
+         // flip _is_odd_bit
+         _is_odd_bit = !_is_odd_bit;
+         
          // increment the frame indices
-         if (++frame_index == 60)
+         if (frame_index == 60)
          {
             // increment to the next minute
             add_time(1, 0);
@@ -429,11 +435,6 @@ class wwvb
             // This approach didnt work - so a static calibration value is used
             */
          }
-         subframe_index = frame_index % 10;
-         set_lowTime();
-         
-         // reset the isr_count (poor-mans timer, but its synced to the ~60kHz clock)
-         isr_count = 0;
       }
    }
 
