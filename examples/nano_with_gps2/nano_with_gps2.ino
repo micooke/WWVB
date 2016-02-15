@@ -1,28 +1,5 @@
 #include <Arduino.h>
-
-//          Arduino Nano
-//        +----+=====+----+
-//        |    | USB |    |
-// SCK B5 |D13 +-----+D12 | B4 MISO
-//        |3V3        D11~| B3 MOSI
-//        |Vref       D10~| B2 SS
-//     C0 |A0          D9~| B1 |=> WWVB ANTENNA
-//     C1 |A1          D8 | B0 |=> GPS Rx (Software Serial)
-//     C2 |A2          D7 | D7 |<= GPS Tx (Software Serial)
-//     C3 |A3          D6~| D6
-// SDA C4 |A4          D5~| D5
-// SCL C5 |A5          D4 | D4
-//        |A6          D3~| D3 INT1
-//        |A7          D2 | D2 INT0
-//        |5V         GND |
-//     C6 |RST        RST | C6
-//        |GND        TX1 | D0
-//        |Vin        RX1 | D1
-//        |  5V MOSI GND  |
-//        |   [] [] []    |
-//        |   [] [] []    |
-//        | MISO SCK RST  |
-//        +---------------+
+//ATtiny85 (doesn't fit yet - a rework of ATtinyGPS is planned)//                     +-\/-+//            RST PB5 1|*   |8 VCC//                PB3 2|    |7 PB2 <= GPS Tx (Software Serial)//WWVB ANTENNA <= PB4 3|    |6 PB1 => GPS Rx (Software Serial)//                GND 4|    |5 PB0//                     +----+////Arduino Nano//       +----+=====+----+//       |    | USB |    |// SCK 13| D13+-----+D12 |12 MISO//       |3V3        D11~|11 MOSI//       |Vref       D10~|10 SS//     14| A0/D14     D9~|9 => WWVB ANTENNA//     15| A1/D15     D8 |8//     16| A2/D16     D7 |7 <= GPS Tx (Software Serial)//     17| A3/D17     D6~|6 => GPS Rx (Software Serial)// SDA 18| A4/D18     D5~|5// SCL 19| A5/D19     D4 |4//     20| A6         D3~|3 INT1//     21| A7         D2 |2 INT0//       | 5V        GND |//       | RST       RST |//       | GND       TX1 |0//       | Vin       RX1 |1//       |  5V MOSI GND  |//       |   [ ][ ][ ]   |//       |   [*][ ][ ]   |//       | MISO SCK RST  |//       +---------------+////Arduino Micro//       +--------+=====+---------+//       |        | USB |         |// SCK 13| D13    +-----+     D12 |12 MISO//       |3V3                 D11~|11 MOSI//       |Vref                D10~|10 SS//     14| A0/D14              D9~|9 => WWVB ANTENNA//     15| A1/D15              D8 |8//     16| A2/D16              D7 |7 <= GPS Tx (Software Serial)//     17| A3/D17              D6~|6 => GPS Rx (Software Serial)// SDA 18| A4/D18              D5~|5// SCL 19| A5/D19              D4 |4//     20| A6                  D3~|3 INT1//     21| A7                  D2 |2 INT0//       | 5V                 GND |//       | RST                RST |//       | GND                TX1 |0//       | Vin                RX1 |1//       |MISO MISO[*][ ]VCC    SS|//       |SCK   SCK[ ][ ]MOSI MOSI|//       |      RST[ ][ ]GND      |//       +------------------------+////Sparkfun Pro Micro//                             +----+=====+----+//                             |[J1]| USB |    |//                            1| TXO+-----+RAW |//                            0| RXI       GND |//                             | GND       RST |//                             | GND       VCC |//                        SDA 2| D2         A3 |21//                        SCL 3|~D3         A2 |20//                            4| D4         A1 |19//                            5|~D5         A0 |18//GPS Tx (Software Serial) <= 6|~D6        D15 |15 SCK//GPS Rx (Software Serial) => 7| D7        D14 |14 MISO//                            8| D8        D16 |16 MOSI//           WWVB ANTENNA  <= 9|~D9        D10~|10//                             +---------------+
 
 /*
 Recommended debug setup
@@ -54,14 +31,12 @@ ATmega328p |  USE_OC1B | D10
 * Default setup
 */
 
-#define SetupGPS // Sends PMTK strings to setup the GPS
-
-bool sync_gpstime = false;
+bool sync_gpstime = true;
 
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 #define _DEBUG 0
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-#define _DEBUG 0
+#define _DEBUG 1
 #else
 #define _DEBUG 1
 #endif
@@ -71,12 +46,24 @@ _DEBUG == 0: Set wwvb time to the compile time, use the wwvb interrupt, dont bli
 _DEBUG == 1: Set wwvb time to the compile time, use the wwvb interrupt, blink the led, serial output
 _DEBUG == 2: Set wwvb time to the compile time, use the wwvb interrupt, blink the led, VERBOSE serial output
 */
-#if (_DEBUG > 0)
-uint8_t LED_PIN = 13;
-uint16_t LED_DELAY = 100;
+
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+unsigned char LED_PIN = 1; // Use the Tx LED on the digistump
+#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+unsigned char LED_PIN = SS;
+#elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
+unsigned char LED_PIN = 13;
+#elif defined(__STM32F1__)
+unsigned char LED_PIN = PB13;
+#else
+unsigned char LED_PIN = 13;
+#endif
+
+uint16_t LED_FAST = 100;
+uint16_t SLOW_DELAY = 1000;
 bool LED_TOGGLE = false;
 uint32_t t0;
-#endif
+uint8_t last_satellites = 0;
 
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
 #include <wwvb.h> // include before ATtinyGPS.h
@@ -84,192 +71,208 @@ wwvb wwvb_tx;
 
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
 ISR(TIMER1_OVF_vect)
-
 {
    wwvb_tx.interrupt_routine();
 }
 
 #include <SoftwareSerial.h>
-SoftwareSerial ttl(7, 8);// Rx,Tx pin
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+SoftwareSerial ttl(2, 1);// Rx, Tx pin
+#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+SoftwareSerial ttl(10, 6);// Rx, Tx pin
+#else
+SoftwareSerial ttl(7, 6);// Rx, Tx pin
+#endif
 
 #include <ATtinyGPS.h>
 ATtinyGPS gps;
-
-uint8_t count = 0;
-
-// debug variables
-uint32_t t1;
-boolean isLow = false;
-
-char c = '\0';
 
 void setup()
 {
    wwvb_tx.setup();
    
    // Set the wwvb calibration values
-   //wwvb_tx.set_1s_calibration(0, 0); // 59.952668
+   // ATmega328p : _DEBUG = 0 or 1 : frametime for calibrate( 86, 86) = 60.000254s
+   // ATmega32u4 : _DEBUG = 0 or 1 : frametime for calibrate(-6,-6) = 59.999825s
    wwvb_tx.setPWM_LOW(0);
-   //wwvb_tx.set(12030,30075,48120,60150); // What they should be
-   //wwvb_tx.set(12030,30075,47600,54461); // Set the values for WWVB pulse widths
-   // Note these values are stored in a uint16_t with a max of 65536.
-   // If greater than this value is required, the 1s calibration value 
-   // is added to this so set that appropriately
-   
+      
    // set the timezone before you set your time
    wwvb_tx.setTimezone(0,0); // Default state - this line is not needed
    // if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
-   //gps.setTimezone(10,30); // +9:30 Adelaide time + 1:00 for DST
-      
+   gps.setTimezone(10,30); // +9:30 Adelaide time + 1:00 for DST
+   
    #if (_DEBUG > 0)
    Serial.begin(9600);
-   while(!Serial);
+   #if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+   while(!Serial); // If using a leonardo/micro, wait for the Serial connection
+   #endif
    t0 = millis();
+   #endif
+   
    pinMode(LED_PIN, OUTPUT);
-   #endif
    
-   //ttl.begin(14400);
-   // ublox
-   // send RMC & GGA only
-   //ttl.println("");
-   //1Hz update rate
-   //ttl.println(""");
-   #ifdef SetupGPS
-   // Setup the GPS
-   // send RMC & GGA only
-   //                     GLL, RMC, VTG, GGA, GSA,
-   ttl.println("$PMTK314,   0,   1,   0,   1,   0,"
-   // GSV, GRS, GST,    ,    ,
-   "    0,   0,   0,   0,   0,"
-   //   ,   ,    , MALM,MEPH,
-   "    0,   0,   0,   0,   0,"
-   //MDGP,MDBG, ZDA,MCHN*checksum
-   "    0,   0,   0,   0*28");
-   //ttl.println("$PMTK314,-1*04"); // reset NMEA sequences to system default
-
-   //1Hz update rate
-   ttl.println("$PMTK220,1000*1F");
-   //ttl.println("$PMTK220,100*2F");//10Hz update rate
-   //ttl.println("$PMTK220,200*2C");//5Hz update rate
-   
-   //ttl.println("$PMTK251,9600*17");
-   //ttl.println("$PMTK251,14400*29"); // Fastest we can go with the current parsing method with only minimal over-writing of serial buffer data (TinyGPS++ may be better?)
-   //ttl.println("$PMTK251,19200*22");
-   //ttl.println("$PMTK251,38400*27");
-   //ttl.println("$PMTK251,57600*2C");
-   //ttl.println("$PMTK251,115200*1F");
-   //ttl.println("$PMTK251,0*28\n"); // reset BAUD rate to system default
-   delay(100);
    ttl.begin(9600);
-   #endif
+   
+   gps.setup(ttl);
    
    #if (_DEBUG > 0)
-   Serial.print("Waiting on first GPS sync ");
+   Serial.println(F("Waiting on first GPS sync (sync only occurs at 0s)"));
    t0 = millis();
-   #endif
-   
-   // first up : sync the wwvb_tx to the gps
-   // wait until we get gps data
-   while ( !((gps.IsValid) & (gps.ss == 0)) )
-   {
-      while (ttl.available())
-      {
-         gps.parse(ttl.read());
-      }
-      #if (_DEBUG > 0)
-      if (millis() - t0 > 1000)
-      {
-         Serial.print(".");
-         t0 = millis();
-      }
-      #endif
-   }
-   
-   // Yeah im ignoring the last parameter to set whether we are in daylight savings time
-   wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
-   wwvb_tx.start();
-   
-   #if (_DEBUG > 0)
-   Serial.println(" GPS synced!");
-   
-   Serial.println("##### GPS SYNCED #####");
-   Serial.print("IsValid    : "); Serial.println(gps.IsValid);
-   Serial.print("Quality    : "); Serial.println(gps.quality);
-   Serial.print("Satellites : "); Serial.println(gps.satellites);
-   Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
-   
-   Serial.println("WWVB transmit started");
    #endif
 }
+
+void disableSoftwareSerialRead()
+{
+   // Note : SoftwareSerial enables all pin change interrupt registers
+   // disable the pin change interrupt
+   #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+   // GIMSK  = [   -   |  INT0 |  PCIE |   -   |   -   |   -   |   -   |   -   ]
+   //GIMSK = 0x00;
+   // PCMSK0 = [   -   |   -   | PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [   -   |   -   |    RST|    PB4|    PB3|    PB2|    PB1|    PB0]
+   PCMSK = 0x00;
+   #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+   // PCICR  = [   -   |   -   |   -   |   -   |   -   |   -   |   -   |  PCIE0]
+   //PCICR = 0x00;
+   // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [    D12|    D11|    D10|     D9|   MISO|   MOSI|    SCK|     SS]
+   PCMSK0 = 0x00;
+   #else
+   // PCICR  = [   -   |   -   |   -   |   -   |   -   |  PCIE2|  PCIE1|  PCIE0]
+   //PCICR = 0x00;
+   // PCMSK2 = [PCINT23|PCINT22|PCINT21|PCINT20|PCINT19|PCINT18|PCINT17|PCINT16]
+   //          [     D7|     D6|     D5|     D4|     D3|     D2|     D1|     D0]
+   PCMSK2 = 0x00;
+   // PCMSK1 = [   -   |PCINT14|PCINT13|PCINT12|PCINT11|PCINT10|PCINT09|PCINT08]
+   //          [   -   |    RST|     A5|     A4|     A3|     A2|     A1|     A0]
+   PCMSK1 = 0x00;
+   // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [  XTAL2|  XTAL1|    D13|    D11|    D12|    D10|     D9|     D8]
+   PCMSK0 = 0x00;
+   #endif
+}
+
+void enableSoftwareSerialRead()
+{
+   // Note : SoftwareSerial enables all pin change interrupt registers
+   // disable the pin change interrupt
+   #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+   // GIMSK  = [   -   |  INT0 |  PCIE |   -   |   -   |   -   |   -   |   -   ]
+   // PCMSK0 = [   -   |   -   | PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [   -   |   -   |    RST|    PB4|    PB3|    PB2|    PB1|    PB0]
+   PCMSK |= _BV(PCINT2) | _BV(PCINT1);
+   #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+   // PCICR  = [   -   |   -   |   -   |   -   |   -   |   -   |   -   |  PCIE0]
+   // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [    D12|    D11|    D10|     D9|   MISO|   MOSI|    SCK|     SS]
+   PCMSK0 |= _BV(PCINT5); // enable pin interrupt on D10
+   #else
+   // PCICR  = [   -   |   -   |   -   |   -   |   -   |  PCIE2|  PCIE1|  PCIE0]
+   // PCMSK2 = [PCINT23|PCINT22|PCINT21|PCINT20|PCINT19|PCINT18|PCINT17|PCINT16]
+   //          [     D7|     D6|     D5|     D4|     D3|     D2|     D1|     D0]
+   PCMSK2 |= _BV(PCINT23); // enable pin interrupt on D7
+   // PCMSK1 = [   -   |PCINT14|PCINT13|PCINT12|PCINT11|PCINT10|PCINT09|PCINT08]
+   //          [   -   |    RST|     A5|     A4|     A3|     A2|     A1|     A0]
+   // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+   //          [  XTAL2|  XTAL1|    D13|    D11|    D12|    D10|     D9|     D8]
+   #endif
+}
+
+uint8_t mins = 0;
 
 void loop()
 {
    // if we are receiving gps data, parse it
-   if (ttl.available())
+   if (sync_gpstime)
    {
-      if (sync_gpstime)
+      enableSoftwareSerialRead(); // enable SoftwareSerial pin change interrupts
+      ttl.listen(); // reset buffer status
+      gps.new_data(); // clear gps.new_data
+      
+      // wait until we get gps data
+      char c;
+      while ( !(((gps.IsValid)  | (gps.YY < 80)) & ((gps.ss == 0) & gps.new_data())) )
       {
-          // Parse gps data until we have new data
-         while(gps.new_data() == false)
+         while (ttl.available())
          {
-            while (ttl.available())
-            {
-               gps.parse(ttl.read());
-            }
-         }
-         
-         // If the gps data is valid, sync the wwvb time
-         if ( gps.IsValid )
-         {
-            #if (_DEBUG > 0)
-            Serial.println("##### GPS SYNCED #####");
-            Serial.print("IsValid    : "); Serial.println(gps.IsValid);
-            Serial.print("Quality    : "); Serial.println(gps.quality);
-            Serial.print("Satellites : "); Serial.println(gps.satellites);
-            Serial.print("Date/Time  : "); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
+            c = ttl.read();
+            gps.parse(c);
+            #if (_DEBUG == 2)
+            Serial.print(c);
             #endif
-                     
-            // Yeah im ignoring the last parameter to set whether we are in daylight savings time
-            wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
-            sync_gpstime = false;
-         }      
+         }
+         #if (_DEBUG > 0)
+         if (millis() - t0 > 1000)
+         {
+            if (gps.satellites > last_satellites)
+            {
+               Serial.print(gps.satellites);
+               last_satellites = gps.satellites;
+            }
+            else if (gps.ss % 10 == 0)
+            {
+               Serial.print(gps.ss);
+            }
+            else
+            {
+               Serial.print(".");
+            }
+            t0 = millis();
+         }
+         #endif
       }
+      
+      // disable the pin change interrupts that SoftwareSerial uses to read data
+      // as it interferes with the wwvb timing
+      ttl.stopListening();
+      disableSoftwareSerialRead(); // disable SoftwareSerial pin change interrupts
+      
+      // Yeah im ignoring the last parameter to set whether we are in daylight savings time
+      wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+      wwvb_tx.start();
+      
+      #if (_DEBUG > 0)
+      Serial.println("");
+      Serial.println(F("##### GPS SYNCED #####"));
+      Serial.print(F("IsValid    : ")); Serial.println(gps.IsValid);
+      Serial.print(F("Quality    : ")); Serial.println(gps.quality);
+      Serial.print(F("Satellites : ")); Serial.println(gps.satellites);
+      Serial.print(F("Time/Date  : ")); print_datetime(gps.mm,gps.hh,gps.DD,gps.MM,gps.YY);
+      Serial.println(F("WWVB transmit started"));
+      #endif
+      sync_gpstime = false;
    }
    
-   // If there is new data set the wwvb time
-   // Note
-   // * wwvb time is synced and wwvb transmission is started when minutes = 0,10,20,30,40 or 50
-   // * wwvb transmission is stopped when minutes = 9,19,29,39,49 or 59
-   //
-   // In other words, wwvb will transmit for 9 minutes, then turn off and sync for a minute
-   //
-   if (gps.new_data() & (gps.IsValid) & (gps.ss == 0) )
+   if (!sync_gpstime)
    {
-      switch (gps.mm % 10)
+      // Note
+      // * wwvb time is synced and wwvb transmission is started when minutes = 0,10,20,30,40 or 50
+      // * wwvb transmission is stopped when minutes = 9,19,29,39,49 or 59
+      //
+      // In other words, wwvb will transmit for 9 minutes, then turn off and sync for a minute
+      //
+      if ( (wwvb_tx.mm() % 10 == 9) & wwvb_tx.is_active() )
       {
-         case 0:
-         #if (_DEBUG > 0)
-         Serial.println("WWVB started");
-         #endif
-            
-         wwvb_tx.start();
-         break;
-         case 9:
-         #if (_DEBUG > 0)
-         Serial.println("WWVB stopped");
-         #endif
-         
          wwvb_tx.stop();
          sync_gpstime = true;
-         break;
+         #if (_DEBUG > 0)
+         Serial.println(F("WWVB transmit stopped\nResyncing time with GPS"));
+         #endif
       }
    }
    
    #if (_DEBUG > 0)
-
+   if (mins != wwvb_tx.mm())
+   {
+      Serial.print(F("Time/Date  : ")); print_datetime(wwvb_tx.mm(),wwvb_tx.hh(),wwvb_tx.DD(),wwvb_tx.MM(),wwvb_tx.YY());
+      mins = wwvb_tx.mm();
+   }
+   #endif
+   
+   // Debug LED
    if(wwvb_tx.is_active())
    {
-      if (millis() - t0 >= LED_DELAY)
+      if (millis() - t0 >= LED_FAST)
       {
          t0 = millis();
          digitalWrite(LED_PIN, LED_TOGGLE);
@@ -280,12 +283,16 @@ void loop()
    {
       if(gps.satellites == 0)
       {
-         digitalWrite(LED_PIN, LOW);
+         if (millis() - t0 >= SLOW_DELAY)
+         {
+            t0 = millis();
+            digitalWrite(LED_PIN, LED_TOGGLE);
+            LED_TOGGLE = !LED_TOGGLE;
+         }
       }
       else
       {
          digitalWrite(LED_PIN, HIGH);
       }
    }
-   #endif
 }

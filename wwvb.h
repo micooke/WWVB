@@ -143,15 +143,21 @@ class wwvb
    wwvb() : timezone_HH(0), timezone_MM(0)
    {
       #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-      set_1s_calibration(0,0);
+      calibrate(  0,  0); // INVALID
       #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-      set_1s_calibration(-15,-16);
+      calibrate(-6,-6);
       #elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
-      set_1s_calibration(84, 85); // 60.000086
+      calibrate( 86, 86);
       #endif
    }
    
-   void set_1s_calibration(const int16_t &_c0, const int16_t &_c1)
+   uint8_t mm() {return mins_;}
+   uint8_t hh() {return hour_;}
+   uint8_t DD() {return DD_;}
+   uint8_t MM() {return MM_;}
+   uint8_t YY() {return YY_;}
+   
+   void calibrate(const int16_t &_c0, const int16_t &_c1)
    {
       WWVB_EOB_CAL[0] = _c0;
       WWVB_EOB_CAL[1] = _c1;

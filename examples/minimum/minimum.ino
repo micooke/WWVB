@@ -1,32 +1,76 @@
-/*
-Minimum.ino
-Set the wwvb time to the compile time.
-The wwvb interrupt routine auto-increments the minute at the end of each frame
+//ATtiny85
+//                     +-\/-+
+//            RST PB5 1|*   |8 VCC
+//                PB3 2|    |7 PB2
+//WWVB ANTENNA <= PB4 3|    |6 PB1
+//                GND 4|    |5 PB0
+//                     +----+
+//
+//Arduino Nano
+//       +----+=====+----+
+//       |    | USB |    |
+// SCK 13| D13+-----+D12 |12 MISO
+//       |3V3        D11~|11 MOSI
+//       |Vref       D10~|10 SS
+//     14| A0/D14     D9~|9 => WWVB ANTENNA
+//     15| A1/D15     D8 |8
+//     16| A2/D16     D7 |7
+//     17| A3/D17     D6~|6
+// SDA 18| A4/D18     D5~|5
+// SCL 19| A5/D19     D4 |4
+//     20| A6         D3~|3 INT1
+//     21| A7         D2 |2 INT0
+//       | 5V        GND |
+//       | RST       RST |
+//       | GND       TX1 |0
+//       | Vin       RX1 |1
+//       |  5V MOSI GND  |
+//       |   [ ][ ][ ]   |
+//       |   [*][ ][ ]   |
+//       | MISO SCK RST  |
+//       +---------------+
+//
+//Arduino Micro
+//       +--------+=====+---------+
+//       |        | USB |         |
+// SCK 13| D13    +-----+     D12 |12 MISO
+//       |3V3                 D11~|11 MOSI
+//       |Vref                D10~|10 SS
+//     14| A0/D14              D9~|9 => WWVB ANTENNA
+//     15| A1/D15              D8 |8
+//     16| A2/D16              D7 |7
+//     17| A3/D17              D6~|6
+// SDA 18| A4/D18              D5~|5
+// SCL 19| A5/D19              D4 |4
+//     20| A6                  D3~|3 INT1
+//     21| A7                  D2 |2 INT0
+//       | 5V                 GND |
+//       | RST                RST |
+//       | GND                TX1 |0
+//       | Vin                RX1 |1
+//       |MISO MISO[*][ ]VCC    SS|
+//       |SCK   SCK[ ][ ]MOSI MOSI|
+//       |      RST[ ][ ]GND      |
+//       +------------------------+
+//
+//Sparkfun Pro Micro
+//                  +----+=====+----+
+//                  |[J1]| USB |    |
+//                 1| TXO+-----+RAW |
+//                 0| RXI       GND |
+//                  | GND       RST |
+//                  | GND       VCC |
+//             SDA 2| D2         A3 |21
+//             SCL 3|~D3         A2 |20
+//                 4| D4         A1 |19
+//                 5|~D5         A0 |18
+//                 6|~D6        D15 |15 SCK
+//                 7| D7        D14 |14 MISO
+//                 8| D8        D16 |16 MOSI
+//WWVB ANTENNA  <= 9|~D9        D10~|10
+//                  +---------------+
 
-Arduino Nano
-       +----+=====+----+
-       |    | USB |    |
-SCK B5 |D13 +-----+D12 | B4 MISO
-       |3V3        D11~| B3 MOSI
-       |Vref       D10~| B2 SS
-    C0 |A0          D9~| B1 |=> WWVB ANTENNA
-    C1 |A1          D8 | B0 
-    C2 |A2          D7 | D7 
-    C3 |A3          D6~| D6
-SDA C4 |A4          D5~| D5
-SCL C5 |A5          D4 | D4
-       |A6          D3~| D3 INT1
-       |A7          D2 | D2 INT0
-       |5V         GND |
-    C6 |RST        RST | C6
-       |GND        TX1 | D0
-       |Vin        RX1 | D1
-       |  5V MOSI GND  |
-       |   [] [] []    |
-       |   [] [] []    |
-       | MISO SCK RST  |
-       +---------------+
-	   
+/*
 Recommended debug setup
 Use a RC (low-pass) filter to view the message (p1) as well as the modulated carrier (p0)
 
@@ -56,6 +100,7 @@ ATmega328p |  USE_OC1B | D10
 * Default setup
 */
 
+
 #include <Arduino.h>
 #include <avr/interrupt.h>
 
@@ -64,24 +109,31 @@ ATmega328p |  USE_OC1B | D10
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
 #define _DEBUG 1
 #else
-#define _DEBUG 2
+#define _DEBUG 1
 #endif
 
 /*
-_DEBUG == 0: Set wwvb time to the compile time, use the wwvb interrupt, dont blink the led
-_DEBUG == 1: Set wwvb time to the compile time, use the wwvb interrupt, blink the led
-_DEBUG == 2: Set wwvb time to the compile time, use the wwvb interrupt, blink the led, serial output
+_DEBUG == 0: Set wwvb time to the compile time, use the wwvb interrupt, blink the led
+_DEBUG == 1: Set wwvb time to the compile time, use the wwvb interrupt, blink the led, serial output
 */
-#if (_DEBUG > 0)
+
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-unsigned char LED_PIN = 1; // Use PB1 the Tx LED on the digistump
+unsigned char LED_PIN = 1; // Use the Tx LED on the digistump
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
 unsigned char LED_PIN = SS;
 #elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
 unsigned char LED_PIN = 13;
+#elif defined(__STM32F1__)
+unsigned char LED_PIN = PB13;
+#else
+unsigned char LED_PIN = 13;
 #endif
-boolean LED_TOGGLE = false;
-#endif
+
+uint8_t mins = 0;
+uint16_t LED_FAST = 100;
+uint16_t SLOW_DELAY = 1000;
+bool LED_TOGGLE = false;
+uint32_t t0;
 
 #define REQUIRE_TIMEDATESTRING 1
 
@@ -92,9 +144,7 @@ wwvb wwvb_tx;
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
 ISR(TIMER1_OVF_vect)
 {
-   cli(); // disable interrupts
    wwvb_tx.interrupt_routine();
-   sei(); // enable interrupts
 }
 
 void setup()
@@ -109,10 +159,12 @@ void setup()
    #if (REQUIRE_TIMEDATESTRING == 1)
    wwvb_tx.set_time(__DATE__, __TIME__);
    #endif
-    
-   #if (_DEBUG == 2)
+   
+   #if (_DEBUG > 0)
    Serial.begin(9600);
-   while(!Serial);
+   #if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+   while(!Serial); // If using a leonardo/micro, wait for the Serial connection
+   #endif
    
    Serial.print("wwvb set to: ");
    Serial.print(__TIME__);
@@ -122,33 +174,32 @@ void setup()
    wwvb_tx.debug_time();
    Serial.println();
    #endif
-   
-   #if (_DEBUG > 0)
+
    pinMode(LED_PIN, OUTPUT);
-   #endif
 
    wwvb_tx.start(); // Thats it
 }
 void loop()
 {
    #if (_DEBUG > 0)
-   // debug outputs at the end of each 1minute frame
-   if(wwvb_tx.end_of_frame == true)
+   if (mins != wwvb_tx.mm())
    {
-      wwvb_tx.end_of_frame = false; // clear the EOF bit
-      #if (_DEBUG == 2)
-      wwvb_tx.debug_time();
-      Serial.println();
-      #endif
+      Serial.print(F("Time/Date  : ")); print_datetime(wwvb_tx.mm(),wwvb_tx.hh(),wwvb_tx.DD(),wwvb_tx.MM(),wwvb_tx.YY());
+      mins = wwvb_tx.mm();
+   }
+   #endif
+   // Debug LED
+   if(wwvb_tx.is_active())
+   {
+      if (millis() - t0 >= LED_FAST)
+      {
+         t0 = millis();
+         digitalWrite(LED_PIN, LED_TOGGLE);
+         LED_TOGGLE = !LED_TOGGLE;
+      }
    }
    else
    {
-      /*
       digitalWrite(LED_PIN, HIGH);
-      delay(100);
-      digitalWrite(LED_PIN, LOW);
-      delay(100);
-      */
    }
-   #endif
 }
