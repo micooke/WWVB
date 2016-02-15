@@ -138,8 +138,6 @@ class wwvb
    volatile bool _is_odd_bit = true;
    
    public:
-   volatile bool end_of_frame = false; // sticky bit - see minimum.ino for example use
-
    wwvb() : timezone_HH(0), timezone_MM(0)
    {
       #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
@@ -429,17 +427,6 @@ class wwvb
 
             // reset the frame_index
             frame_index = 0;
-            
-            // indicate that we have finished sending a frame
-            end_of_frame = true;
-
-            /*
-            The calibration value = ((time delta)*(ms->s)*(frequency in Hz))/(60 seconds)
-            16MHz : dt*((1/1000)*60150)/60)=1.0025*dt
-            8MHz : dt*((1/1000)*60606)/60)=1.0101*dt
-            
-            // This approach didnt work - so a static calibration value is used
-            */
          }
       }
    }
@@ -587,8 +574,7 @@ class wwvb
       t_MM = _MM;
       t_YY = _YY;
 
-      //increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-      addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, timezone_HH, timezone_MM+1, 0);
+      addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, timezone_HH, timezone_MM, 0);
 
       // set the correct frame bits
       set_time(_daylight_savings);
