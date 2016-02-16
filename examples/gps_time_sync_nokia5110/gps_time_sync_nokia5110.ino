@@ -158,7 +158,7 @@ void setup()
 	gps.setup(ttl);
 
 	nokia5110.begin();
-	nokia5110.setContrast(40);
+	nokia5110.setContrast(38);
 	nokia5110.setTextSize(1);
 	nokia5110.setTextColor(BLACK);
 
