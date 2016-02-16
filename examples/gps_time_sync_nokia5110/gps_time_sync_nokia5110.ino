@@ -143,6 +143,10 @@ void setup()
 	// ATmega328p : _DEBUG = 0 or 1 : frametime for calibrate( 86, 86) = 60.000254s
 	// ATmega32u4 : _DEBUG = 0 or 1 : frametime for calibrate(-6,-6) = 59.999825s
 	wwvb_tx.setPWM_LOW(0);
+	wwvb_tx.calibrate(33,34); // 60.000017s
+	// calibration
+	//(0, 0) = 59.966523s (86, 86) = 60.052528s
+	// 60.052528/(0.086005 / 86) = 52.5249 - so calibrate to (86,86) - (53,52) = (33,34)
 
 	// set the timezone before you set your time
 	wwvb_tx.setTimezone(0, 0); // Default state - this line is not needed
@@ -292,25 +296,42 @@ void updateDisplay()
 	}
 	else
 	{
-		nokia5110.print(gps.quality); nokia5110.print(" - ");
 		switch (gps.quality)
 		{
+		/*
 		case 1:
-			nokia5110.print("  GPS"); break;
+			nokia5110.print(" 1 - GPS "); break;
 		case 2:
-			nokia5110.print(" DGPS"); break;
+			nokia5110.print(" 2 - DGPS"); break;
 		case 3:
-			nokia5110.print(" PPS"); break;
+			nokia5110.print(" 3 - PPS "); break;
 		case 4:
-			nokia5110.print("  RTK"); break;
+			nokia5110.print(" 4 - RTK "); break;
 		case 5:
-			nokia5110.print(" fRTK"); break;
+			nokia5110.print(" 5 - fRTK"); break;
 		case 6:
-			nokia5110.print("  EST"); break;
+			nokia5110.print(" 6 - EST "); break;
 		case 7:
-			nokia5110.print("  MAN"); break;
+			nokia5110.print(" 7 - MAN "); break;
 		case 8:
-			nokia5110.print("  SIM"); break;
+			nokia5110.print(" 8 - SIM "); break;
+		*/
+		case 1:
+			nokia5110.print("      GPS"); break;
+		case 2:
+			nokia5110.print("     DGPS"); break;
+		case 3:
+			nokia5110.print("      PPS"); break;
+		case 4:
+			nokia5110.print("      RTK"); break;
+		case 5:
+			nokia5110.print("float RTK"); break;
+		case 6:
+			nokia5110.print("DEAD RECN"); break;
+		case 7:
+			nokia5110.print("   MANUAL"); break;
+		case 8:
+			nokia5110.print("SIMULATED"); break;
 		}
 	}
 	nokia5110.display();
