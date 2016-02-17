@@ -538,7 +538,7 @@ OC2B :  3 PD3
 #endif
 	}
 
-	void get_time(volatile uint8_t &_mins, volatile uint8_t &_hour,
+	void get_time(volatile uint8_t &_hour, volatile uint8_t &_mins,
 		volatile uint8_t &_DD, volatile uint8_t &_MM, volatile uint8_t &_YY)
 	{
 		_mins = mins_;
@@ -570,7 +570,7 @@ OC2B :  3 PD3
 		_hour = timezone_HH;
 		_mins = timezone_MM;
 	}
-	void set_time(const uint8_t &_mins, const uint8_t &_hour,
+	void set_time(const uint8_t &_hour, const uint8_t &_mins,
 		const uint8_t &_DD, const uint8_t &_MM, const uint8_t &_YY,
 		const uint8_t _daylight_savings = 0)
 	{
@@ -581,7 +581,7 @@ OC2B :  3 PD3
 		t_MM = _MM;
 		t_YY = _YY;
 
-		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, timezone_HH, timezone_MM, 0);
+		addTimezone<volatile uint8_t>(t_hh, t_mm, t_ss, t_DD, t_MM, t_YY, timezone_HH, timezone_MM, 0);
 
 		// set the correct frame bits
 		set_time(_daylight_savings);
@@ -589,10 +589,10 @@ OC2B :  3 PD3
 	void add_time(const uint8_t &_hour, const uint8_t &_mins, const uint8_t _secs = 0)
 	{
 		// get the current time
-		get_time(t_mm, t_hh, t_DD, t_MM, t_YY);
+		get_time(t_hh, t_mm, t_DD, t_MM, t_YY);
 
 		//increment by 1 minute (last 3 digits specify increment in : hour, min, sec)
-		addTimezone<volatile uint8_t>(t_ss, t_mm, t_hh, t_DD, t_MM, t_YY, _hour, _mins, _secs);
+		addTimezone<volatile uint8_t>(t_hh, t_mm, t_ss, t_DD, t_MM, t_YY, _hour, _mins, _secs);
 
 		// set the correct frame bits
 		set_time();
@@ -610,7 +610,7 @@ OC2B :  3 PD3
 		DateString_to_DDMMYY(dateString, _DD, _MM, _YY);
 		TimeString_to_HHMMSS(timeString, _hour, _mins, _secs);
 
-		set_time(_mins, _hour, _DD, _MM, _YY, _daylight_savings);
+		set_time(_hour, _mins, _DD, _MM, _YY, _daylight_savings);
 	}
 #endif
 private:

@@ -95,7 +95,7 @@ ATmega328p |  USE_OC1B | D10
 * Default setup
 */
 
-// #define _DEBUG 1 // Serial output
+//#define _DEBUG 1 // Serial output
 #define _DEBUG 0
 
 bool sync_gpstime = true;
@@ -119,7 +119,7 @@ SoftwareSerial ttl(10, 6);// Rx, Tx pin
 SoftwareSerial ttl(7, 6);// Rx, Tx pin
 #endif
 
-#define GPS_MODULE 0 // ublox : Flash 16,812 bytes, SRAM 1299 bytes
+//#define GPS_MODULE 0 // ublox : Flash 16,812 bytes, SRAM 1299 bytes
 //#define GPS_MODULE 1 // mediatek (default) : Flash 16,138 bytes, SRAM 1053 bytes
 
 #include <ATtinyGPS.h>
@@ -149,10 +149,11 @@ void setup()
 	// 60.052528/(0.086005 / 86) = 52.5249 - so calibrate to (86,86) - (53,52) = (33,34)
 
 	// set the timezone before you set your time
-	wwvb_tx.setTimezone(0, 0); // Default state - this line is not needed
-	// if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
-	gps.setTimezone(10, 30); // +9:30 Adelaide time + 1:00 for DST
-
+	gps.setTimezone(10, 30); // set this to your local time e.g. (ACDT = UTC +10:30)
+	
+	// if you are using CST (UTC -6:00), set the timezone to -6,0
+	wwvb_tx.setTimezone(-6, 0);
+	
 	ttl.begin(9600);
 
 	gps.setup(ttl);
@@ -236,7 +237,7 @@ void updateDisplay()
 	if (sync_gpstime)
 	{
 		// increment the internal time while wwvb is stopped (as it is syncing with gps)
-		addTimezone<uint8_t>(ss, mm, hh, DD, MM, YY, 0, 0, 1);
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 0, 0, 1);
 	}
 	else
 	{
@@ -247,6 +248,9 @@ void updateDisplay()
 		DD = wwvb_tx.DD();
 		MM = wwvb_tx.MM();
 		YY = wwvb_tx.YY();
+		
+		// To convert CST (UTC - 6:00) to local time, add 6 hours
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
 	}
 	// line 1
 	//nokia5110.print("   HH:MM:SS   ");
@@ -360,9 +364,6 @@ void loop()
 			// update display every 1s
 			if (millis() - t0 >= 1000)
 			{
-#if (_DEBUG > 0)
-				Serial.println("Update display");
-#endif
 				t0 = millis();
 				updateDisplay();
 			}
@@ -374,7 +375,7 @@ void loop()
 		disableSoftwareSerialRead(); // disable SoftwareSerial pin change interrupts
 
 		// Yeah im ignoring the last parameter to set whether we are in daylight savings time
-		wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+		wwvb_tx.set_time(gps.hh, gps.mm, gps.DD, gps.MM, gps.YY);
 		wwvb_tx.start();
 #if (_DEBUG > 0)
 		Serial.println("Start wwvb");
@@ -404,9 +405,6 @@ void loop()
 	// update display every 1s
 	if (millis() - t0 >= 1000)
 	{
-#if (_DEBUG > 0)
-		Serial.println("Update display");
-#endif
 		t0 = millis();
 		updateDisplay();
 	}

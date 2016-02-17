@@ -152,7 +152,9 @@ void setup()
    wwvb_tx.setup();
 
    // set the timezone before you set your time
-   // if you are using CST (UTC - 6:00), set the timezone to 6,0 (below)
+
+   // wwvb expects to be set with UTC time, this example sets it to the local time instead.
+   // To convert CST (UTC - 6:00) to local time, add 6 hours
    wwvb_tx.setTimezone(6,0);
    wwvb_tx.setPWM_LOW(0);
    
@@ -182,11 +184,22 @@ void setup()
 void loop()
 {
    #if (_DEBUG > 0)
-   if (mins != wwvb_tx.mm())
-   {
-      Serial.print(F("Time/Date  : ")); print_datetime(wwvb_tx.mm(),wwvb_tx.hh(),wwvb_tx.DD(),wwvb_tx.MM(),wwvb_tx.YY());
-      mins = wwvb_tx.mm();
-   }
+	if (mins != wwvb_tx.mm())
+	{
+		// get the time from gps
+		uint8_t hh = wwvb_tx.hh();
+		uint8_t mm = wwvb_tx.mm();
+		uint8_t ss = wwvb_tx.ss();
+		uint8_t DD = wwvb_tx.DD();
+		uint8_t MM = wwvb_tx.MM();
+		uint8_t YY = wwvb_tx.YY();
+		
+		// To convert CST (UTC - 6:00) to local time, add 6 hours
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
+			
+		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
+		mins = wwvb_tx.mm();
+	}
    #endif
    // Debug LED
    if(wwvb_tx.is_active())

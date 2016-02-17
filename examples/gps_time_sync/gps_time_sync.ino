@@ -170,9 +170,10 @@ void setup()
 	wwvb_tx.setPWM_LOW(0);
 
 	// set the timezone before you set your time
-	wwvb_tx.setTimezone(0, 0); // Default state - this line is not needed
-	// if you are using CST (UTC - 6:00), set the timezone to -6,0 (below)
-	gps.setTimezone(10, 30); // +9:30 Adelaide time + 1:00 for DST
+	gps.setTimezone(10, 30); // set this to your local time e.g. (ACDT = UTC +10:30)
+	
+	// if you are using CST (UTC -6:00), set the timezone to -6,0
+	wwvb_tx.setTimezone(-6, 0);
 
 #if (_DEBUG > 0)
 	Serial.begin(9600);
@@ -301,16 +302,27 @@ void loop()
 		disableSoftwareSerialRead(); // disable SoftwareSerial pin change interrupts
 
 		// Yeah im ignoring the last parameter to set whether we are in daylight savings time
-		wwvb_tx.set_time(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+		wwvb_tx.set_time(gps.hh, gps.mm, gps.DD, gps.MM, gps.YY);
 		wwvb_tx.start();
 
 #if (_DEBUG > 0)
+		// get the time from gps
+		uint8_t hh = gps.hh;
+		uint8_t mm = gps.mm;
+		uint8_t ss = gps.ss;
+		uint8_t DD = gps.DD;
+		uint8_t MM = gps.MM;
+		uint8_t YY = gps.YY;
+		
+		// Display as local time (ACDT = UTC+10:30)
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 10, 30, 0);
+		
 		Serial.println("");
 		Serial.println(F("##### GPS SYNCED #####"));
 		Serial.print(F("IsValid    : ")); Serial.println(gps.IsValid);
 		Serial.print(F("Quality    : ")); Serial.println(gps.quality);
 		Serial.print(F("Satellites : ")); Serial.println(gps.satellites);
-		Serial.print(F("Time/Date  : ")); print_datetime(gps.mm, gps.hh, gps.DD, gps.MM, gps.YY);
+		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		Serial.println(F("WWVB transmit started"));
 #endif
 		sync_gpstime = false;
@@ -337,7 +349,18 @@ void loop()
 #if (_DEBUG > 0)
 	if (mins != wwvb_tx.mm())
 	{
-		Serial.print(F("Time/Date  : ")); print_datetime(wwvb_tx.mm(), wwvb_tx.hh(), wwvb_tx.DD(), wwvb_tx.MM(), wwvb_tx.YY());
+		// get the time from gps
+		uint8_t hh = wwvb_tx.hh();
+		uint8_t mm = wwvb_tx.mm();
+		uint8_t ss = wwvb_tx.ss();
+		uint8_t DD = wwvb_tx.DD();
+		uint8_t MM = wwvb_tx.MM();
+		uint8_t YY = wwvb_tx.YY();
+		
+		// To convert CST (UTC - 6:00) to local time, add 6 hours
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
+			
+		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		mins = wwvb_tx.mm();
 	}
 #endif
