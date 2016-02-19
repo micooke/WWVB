@@ -135,6 +135,9 @@ Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(A0, A1, A2); // HardwareSPI
 Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(2, 3, 4); // HardwareSPI
 #endif
 
+const int8_t local_timezone[2] = {10, 30};
+const int8_t wwvb_timezone[2] = {-6, 0};
+
 void setup()
 {
 	wwvb_tx.setup();
@@ -149,10 +152,10 @@ void setup()
 	// 60.052528/(0.086005 / 86) = 52.5249 - so calibrate to (86,86) - (53,52) = (33,34)
 
 	// set the timezone before you set your time
-	gps.setTimezone(10, 30); // set this to your local time e.g. (ACDT = UTC +10:30)
+	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g. (ACDT = UTC +10:30)
 	
-	// if you are using CST (UTC -6:00), set the timezone to -6,0
-	wwvb_tx.setTimezone(-6, 0);
+	// if you are using CST (UTC -6:00), set the timezone to +6,0
+	wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
 	
 	ttl.begin(9600);
 
@@ -249,8 +252,8 @@ void updateDisplay()
 		MM = wwvb_tx.MM();
 		YY = wwvb_tx.YY();
 		
-		// To convert CST (UTC - 6:00) to local time, add 6 hours
-		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
+		// Convert wwvb time transmitted time to local time
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
 	}
 	// line 1
 	//nokia5110.print("   HH:MM:SS   ");
@@ -278,22 +281,22 @@ void updateDisplay()
 	nokia5110.print("wwvb: ");
 	if (wwvb_tx.is_active())
 	{
-		nokia5110.print("      on");
+		nokia5110.print("     on");
 	}
 	else if (sync_gpstime)
 	{
-		nokia5110.print("gps sync");
+		nokia5110.print("syncing");
 	}
 	else
 	{
-		nokia5110.print("     off");
+		nokia5110.print("    off");
 	}
 	// line 5
-	nokia5110.print("satellites: ");
+	nokia5110.print("satellites:");
 	if (gps.satellites < 10) { nokia5110.print(" "); }
 	nokia5110.print(gps.satellites);
 	// line 6
-	nokia5110.print("fix: ");
+	nokia5110.print("fix:");
 	if (gps.quality == 0)
 	{
 		nokia5110.print("  invalid");
@@ -302,24 +305,6 @@ void updateDisplay()
 	{
 		switch (gps.quality)
 		{
-		/*
-		case 1:
-			nokia5110.print(" 1 - GPS "); break;
-		case 2:
-			nokia5110.print(" 2 - DGPS"); break;
-		case 3:
-			nokia5110.print(" 3 - PPS "); break;
-		case 4:
-			nokia5110.print(" 4 - RTK "); break;
-		case 5:
-			nokia5110.print(" 5 - fRTK"); break;
-		case 6:
-			nokia5110.print(" 6 - EST "); break;
-		case 7:
-			nokia5110.print(" 7 - MAN "); break;
-		case 8:
-			nokia5110.print(" 8 - SIM "); break;
-		*/
 		case 1:
 			nokia5110.print("      GPS"); break;
 		case 2:

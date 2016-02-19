@@ -160,6 +160,9 @@ SoftwareSerial ttl(7, 6);// Rx, Tx pin
 #include <ATtinyGPS.h>
 ATtinyGPS gps;
 
+const int8_t local_timezone[2] = {10, 30};
+const int8_t wwvb_timezone[2] = {-6, 0};
+
 void setup()
 {
 	wwvb_tx.setup();
@@ -170,10 +173,10 @@ void setup()
 	wwvb_tx.setPWM_LOW(0);
 
 	// set the timezone before you set your time
-	gps.setTimezone(10, 30); // set this to your local time e.g. (ACDT = UTC +10:30)
+	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g. (ACDT = UTC +10:30)
 	
-	// if you are using CST (UTC -6:00), set the timezone to -6,0
-	wwvb_tx.setTimezone(-6, 0);
+	// if you are using CST (UTC -6:00), set the timezone to +6,0
+	wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
 
 #if (_DEBUG > 0)
 	Serial.begin(9600);
@@ -357,8 +360,8 @@ void loop()
 		uint8_t MM = wwvb_tx.MM();
 		uint8_t YY = wwvb_tx.YY();
 		
-		// To convert CST (UTC - 6:00) to local time, add 6 hours
-		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
+		// Convert wwvb time transmitted time to local time
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
 			
 		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		mins = wwvb_tx.mm();

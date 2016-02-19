@@ -147,15 +147,17 @@ ISR(TIMER1_OVF_vect)
    wwvb_tx.interrupt_routine();
 }
 
+const int8_t wwvb_timezone[2] = {-6, 0};
+
 void setup()
 {
    wwvb_tx.setup();
 
-   // set the timezone before you set your time
+   // Note: set the timezone before you set your time
 
-   // wwvb expects to be set with UTC time, this example sets it to the local time instead.
-   // To convert CST (UTC - 6:00) to local time, add 6 hours
-   wwvb_tx.setTimezone(6,0);
+   // if you are using CST (UTC -6:00), set the timezone to +6,0
+   wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
+	
    wwvb_tx.setPWM_LOW(0);
    
    #if (REQUIRE_TIMEDATESTRING == 1)
@@ -193,11 +195,10 @@ void loop()
 		uint8_t DD = wwvb_tx.DD();
 		uint8_t MM = wwvb_tx.MM();
 		uint8_t YY = wwvb_tx.YY();
+				
+		// Convert wwvb time transmitted time to local time
+		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
 		
-		// To convert CST (UTC - 6:00) to local time, add 6 hours
-		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 6, 0, 0);
-			
-		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		mins = wwvb_tx.mm();
 	}
    #endif
