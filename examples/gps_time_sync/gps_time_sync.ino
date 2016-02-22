@@ -160,8 +160,9 @@ SoftwareSerial ttl(7, 6);// Rx, Tx pin
 #include <ATtinyGPS.h>
 ATtinyGPS gps;
 
-const int8_t local_timezone[2] = {10, 30};
-const int8_t wwvb_timezone[2] = {-6, 0};
+// Setup your timezones here
+const int8_t local_timezone[2] = { 10, 30 }; // This is your local timezone : ACDT (UTC +10:30)
+const int8_t wwvb_timezone[2] = { -6, 0 }; // This is the timezone of your wwvb clock : CST (UTC -6:00)
 
 void setup()
 {
@@ -170,12 +171,12 @@ void setup()
 	// Set the wwvb calibration values
 	// ATmega328p : _DEBUG = 0 or 1 : frametime for calibrate( 86, 86) = 60.000254s
 	// ATmega32u4 : _DEBUG = 0 or 1 : frametime for calibrate(-6,-6) = 59.999825s
-	wwvb_tx.setPWM_LOW(0);
+	//wwvb_tx.setPWM_LOW(0); // sets the pulsewidth for the wwvb 'low' signal : 0 - 133  = 0 - 100% for 16MHz
 
-	// set the timezone before you set your time
-	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g. (ACDT = UTC +10:30)
-	
-	// if you are using CST (UTC -6:00), set the timezone to +6,0
+	// set the timezone to local time
+	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g.
+
+	// set the timezone to your wwvb timezone (the negative is supposed to be here)
 	wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
 
 #if (_DEBUG > 0)
@@ -268,7 +269,7 @@ void loop()
 
 		// wait until we get gps data
 		char c;
-		while (!(((gps.IsValid) | (gps.YY < 80)) & ((gps.ss == 0) & gps.new_data())))
+		while (!(((gps.IsValid) | ((gps.YY < 80) & (gps.YY > 15))) & ((gps.ss == 0) & gps.new_data())))
 		{
 			while (ttl.available())
 			{
@@ -316,10 +317,10 @@ void loop()
 		uint8_t DD = gps.DD;
 		uint8_t MM = gps.MM;
 		uint8_t YY = gps.YY;
-		
+
 		// Display as local time (ACDT = UTC+10:30)
 		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, 10, 30, 0);
-		
+
 		Serial.println("");
 		Serial.println(F("##### GPS SYNCED #####"));
 		Serial.print(F("IsValid    : ")); Serial.println(gps.IsValid);
@@ -359,10 +360,10 @@ void loop()
 		uint8_t DD = wwvb_tx.DD();
 		uint8_t MM = wwvb_tx.MM();
 		uint8_t YY = wwvb_tx.YY();
-		
+
 		// Convert wwvb time transmitted time to local time
 		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
-			
+
 		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		mins = wwvb_tx.mm();
 	}

@@ -232,7 +232,7 @@ public:
 		/*
 		Setup the count values that correspond to 0.2s,0.5s,0.8s for wwvb encoding [LOW,HIGH,MARKER]
 		i.e.  .0 .1 .2 .3 .4 .5 .6 .7 .8 .9 1.0 (1s = END OF BIT)
-		|     |________|________|______|
+		//    |     |________|________|______|
 		LOW   :____/          _______________\
 		HIGH  :______________/         ______\
 		MARKER:_______________________/      \

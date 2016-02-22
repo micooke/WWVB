@@ -144,48 +144,50 @@ wwvb wwvb_tx;
 // The ISR sets the PWM pulse width to correspond with the WWVB bit
 ISR(TIMER1_OVF_vect)
 {
-   wwvb_tx.interrupt_routine();
+	wwvb_tx.interrupt_routine();
 }
 
-const int8_t wwvb_timezone[2] = {-6, 0};
+// Setup your timezones here
+//const int8_t local_timezone[2] = { 10, 30 }; // This is your local timezone : ACDT (UTC +10:30)
+const int8_t wwvb_timezone[2] = { -6, 0 }; // This is the timezone of your wwvb clock : CST (UTC -6:00)
 
 void setup()
 {
-   wwvb_tx.setup();
+	wwvb_tx.setup();
 
-   // Note: set the timezone before you set your time
+	// Note: set the timezone before you set your time
 
-   // if you are using CST (UTC -6:00), set the timezone to +6,0
-   wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
-	
-   wwvb_tx.setPWM_LOW(0);
-   
-   #if (REQUIRE_TIMEDATESTRING == 1)
-   wwvb_tx.set_time(__DATE__, __TIME__);
-   #endif
-   
-   #if (_DEBUG > 0)
-   Serial.begin(9600);
-   #if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-   while(!Serial); // If using a leonardo/micro, wait for the Serial connection
-   #endif
-   
-   Serial.print("wwvb set to: ");
-   Serial.print(__TIME__);
-   Serial.print(" on ");
-   Serial.println(__DATE__);
-   
-   wwvb_tx.debug_time();
-   Serial.println();
-   #endif
+	// set the timezone to your wwvb timezone (the negative is supposed to be here)
+	wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
 
-   pinMode(LED_PIN, OUTPUT);
+	//wwvb_tx.setPWM_LOW(0); // sets the pulsewidth for the wwvb 'low' signal : 0 - 133  = 0 - 100% for 16MHz
 
-   wwvb_tx.start(); // Thats it
+#if (REQUIRE_TIMEDATESTRING == 1)
+	wwvb_tx.set_time(__DATE__, __TIME__);
+#endif
+
+#if (_DEBUG > 0)
+	Serial.begin(9600);
+#if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+	while (!Serial); // If using a leonardo/micro, wait for the Serial connection
+#endif
+
+	Serial.print("wwvb set to: ");
+	Serial.print(__TIME__);
+	Serial.print(" on ");
+	Serial.println(__DATE__);
+
+	wwvb_tx.debug_time();
+	Serial.println();
+#endif
+
+	pinMode(LED_PIN, OUTPUT);
+
+	wwvb_tx.start(); // Thats it
 }
 void loop()
 {
-   #if (_DEBUG > 0)
+#if (_DEBUG > 0)
 	if (mins != wwvb_tx.mm())
 	{
 		// get the time from gps
@@ -195,25 +197,25 @@ void loop()
 		uint8_t DD = wwvb_tx.DD();
 		uint8_t MM = wwvb_tx.MM();
 		uint8_t YY = wwvb_tx.YY();
-				
+
 		// Convert wwvb time transmitted time to local time
 		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
-		
+
 		mins = wwvb_tx.mm();
 	}
-   #endif
-   // Debug LED
-   if(wwvb_tx.is_active())
-   {
-      if (millis() - t0 >= LED_FAST)
-      {
-         t0 = millis();
-         digitalWrite(LED_PIN, LED_TOGGLE);
-         LED_TOGGLE = !LED_TOGGLE;
-      }
-   }
-   else
-   {
-      digitalWrite(LED_PIN, HIGH);
-   }
+#endif
+	// Debug LED
+	if (wwvb_tx.is_active())
+	{
+		if (millis() - t0 >= LED_FAST)
+		{
+			t0 = millis();
+			digitalWrite(LED_PIN, LED_TOGGLE);
+			LED_TOGGLE = !LED_TOGGLE;
+		}
+	}
+	else
+	{
+		digitalWrite(LED_PIN, HIGH);
+	}
 }

@@ -135,8 +135,9 @@ Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(A0, A1, A2); // HardwareSPI
 Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(2, 3, 4); // HardwareSPI
 #endif
 
-const int8_t local_timezone[2] = {10, 30};
-const int8_t wwvb_timezone[2] = {-6, 0};
+// Setup your timezones here
+const int8_t local_timezone[2] = { 10, 30 }; // This is your local timezone : ACDT (UTC +10:30)
+const int8_t wwvb_timezone[2] = { -6, 0 }; // This is the timezone of your wwvb clock : CST (UTC -6:00)
 
 void setup()
 {
@@ -145,18 +146,18 @@ void setup()
 	// Set the wwvb calibration values
 	// ATmega328p : _DEBUG = 0 or 1 : frametime for calibrate( 86, 86) = 60.000254s
 	// ATmega32u4 : _DEBUG = 0 or 1 : frametime for calibrate(-6,-6) = 59.999825s
-	wwvb_tx.setPWM_LOW(0);
-	wwvb_tx.calibrate(33,34); // 60.000017s
+	//wwvb_tx.setPWM_LOW(0); // sets the pulsewidth for the wwvb 'low' signal : 0 - 133  = 0 - 100% for 16MHz
+	wwvb_tx.calibrate(33, 34); // 60.000017s
 	// calibration
 	//(0, 0) = 59.966523s (86, 86) = 60.052528s
 	// 60.052528/(0.086005 / 86) = 52.5249 - so calibrate to (86,86) - (53,52) = (33,34)
 
-	// set the timezone before you set your time
-	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g. (ACDT = UTC +10:30)
-	
-	// if you are using CST (UTC -6:00), set the timezone to +6,0
+	// set the timezone to local time
+	gps.setTimezone(local_timezone[0], local_timezone[1]); // set this to your local time e.g.
+
+	// set the timezone to your wwvb timezone (the negative is supposed to be here)
 	wwvb_tx.setTimezone(-wwvb_timezone[0], -wwvb_timezone[1]);
-	
+
 	ttl.begin(9600);
 
 	gps.setup(ttl);
@@ -251,7 +252,7 @@ void updateDisplay()
 		DD = wwvb_tx.DD();
 		MM = wwvb_tx.MM();
 		YY = wwvb_tx.YY();
-		
+
 		// Convert wwvb time transmitted time to local time
 		addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, wwvb_timezone[0], wwvb_timezone[1], 0);
 	}
@@ -340,7 +341,7 @@ void loop()
 		gps.new_data(); // clear gps.new_data
 
 		// wait until we get gps data
-		while (!(((gps.IsValid) | (gps.YY < 80)) & ((gps.ss == 0) & gps.new_data())))
+		while (!(((gps.IsValid) | ((gps.YY < 80) & (gps.YY > 15))) & ((gps.ss == 0) & gps.new_data())))
 		{
 			while (ttl.available())
 			{
