@@ -1,5 +1,15 @@
 #include <Arduino.h>
-//ATtiny85 (doesn't fit yet - a rework of ATtinyGPS is planned)
+/*
+Compile size examples
++------------+---------+---------+------+
+|  microchip | _DEBUG  |  Flash  | SRAM |
++------------+---------+---------+------+
+| ATmega328p |    1    | 11,568b | 562b |
+|   ATtiny85 |    0    |  6,414b | 287b |
+|   ATtiny85 |    1    |   DOESNT FIT   |
++------------+---------+---------+------+
+*/
+//ATtiny85 - it fits! (just dont enable debug...)
 //                     +-\/-+
 //            RST PB5 1|*   |8 VCC
 //                PB3 2|    |7 PB2 <= GPS Tx (Software Serial)
@@ -145,6 +155,23 @@ ISR(TIMER1_OVF_vect)
 	wwvb_tx.interrupt_routine();
 }
 
+#if _DEBUG == 0
+#define SU_MODE 2
+#else
+#define SU_MODE 0
+#endif
+
+#include <SoftwareUart.h>
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+#define Serial ttl
+SoftwareUart<> ttl(2, 1);// Rx, Tx pin
+#elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
+SoftwareUart<> ttl(10, 6);// Rx, Tx pin
+#else
+SoftwareUart<> ttl(7, 6);// Rx, Tx pin
+#endif
+
+/*
 #include <SoftwareSerial.h>
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 SoftwareSerial ttl(2, 1);// Rx, Tx pin
@@ -153,6 +180,7 @@ SoftwareSerial ttl(10, 6);// Rx, Tx pin
 #else
 SoftwareSerial ttl(7, 6);// Rx, Tx pin
 #endif
+*/
 
 //#define GPS_MODULE 0 // ublox : Flash 16,812 bytes, SRAM 1299 bytes
 //#define GPS_MODULE 1 // mediatek (default) : Flash 16,138 bytes, SRAM 1053 bytes
@@ -191,7 +219,7 @@ void setup()
 
 	ttl.begin(9600);
 
-	gps.setup(ttl);
+	//gps.setup(ttl);
 
 #if (_DEBUG > 0)
 	Serial.println(F("Waiting on first GPS sync (sync only occurs at 0s)"));
@@ -279,6 +307,7 @@ void loop()
 				Serial.print(c);
 #endif
 			}
+#ifndef TIMESYNC_ONLY
 #if (_DEBUG > 0)
 			if (millis() - t0 > 1000)
 			{
@@ -297,6 +326,7 @@ void loop()
 				}
 				t0 = millis();
 			}
+#endif
 #endif
 		}
 
@@ -324,8 +354,10 @@ void loop()
 		Serial.println("");
 		Serial.println(F("##### GPS SYNCED #####"));
 		Serial.print(F("IsValid    : ")); Serial.println(gps.IsValid);
+#ifndef TIMESYNC_ONLY
 		Serial.print(F("Quality    : ")); Serial.println(gps.quality);
 		Serial.print(F("Satellites : ")); Serial.println(gps.satellites);
+#endif
 		Serial.print(F("Time/Date  : ")); print_datetime(hh, mm, DD, MM, YY);
 		Serial.println(F("WWVB transmit started"));
 #endif
@@ -381,7 +413,11 @@ void loop()
 	}
 	else
 	{
+#ifndef TIMESYNC_ONLY
 		if (gps.satellites == 0)
+#else
+		if (gps.IsValid == false)
+#endif
 		{
 			if (millis() - t0 >= SLOW_DELAY)
 			{
