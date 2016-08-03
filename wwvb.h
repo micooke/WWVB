@@ -28,6 +28,17 @@ See minimum.ino for a brief example that sets the wwvb time to the compile time
 #define REQUIRE_TIMEDATESTRING 1
 #endif
 
+#if !defined(WWVB_EXTERNAL_AM)
+#define WWVB_EXTERNAL_AM 0
+#endif
+
+#if defined(WWVB_EXTERNAL_AM)
+#if (F_CPU == 16000000)
+//#error "Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM"
+#pragma message("ERROR : Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM")
+#endif
+#endif
+
 /*
 Default ATtiny85 to use OC1B as OC1A uses an SPI pin - you may want to use SPI and wwvb
 
@@ -61,6 +72,8 @@ ATmega328p |  USE_OC1B | D10
 */
 #if !(defined(USE_OC1A) | defined(USE_OC1B))
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+//#error "This library is currently broken for the ATtiny"
+#pragma message("ERROR : This library is currently broken for the ATtiny")
 #define USE_OC1B
 #if !defined(_DEBUG)
 #define _DEBUG 0
@@ -258,32 +271,26 @@ public:
 		% Note: uint16_t maximum value is 65535, we need a max of 60606 (8MHz  ATmega328p, ATmega32u4) or
 		% 60150 (ATtiny85 or 16MHz ATmega328p, ATmega32u4)so we can store the counter in 16 bits
 		*/
-#if (F_CPU == 16000000)
-		WWVB_LOW = 12030;
-		WWVB_HIGH = 30075;
-		WWVB_MARKER = 48120;
-		WWVB_ENDOFBIT = 60150;
-#else // Its a 8MHz clock on a non-AT
-		WWVB_LOW = 12121;
-		WWVB_HIGH = 30303;
-		WWVB_MARKER = 48485;
-		WWVB_ENDOFBIT = 60606;
+#if defined(WWVB_EXTERNAL_AM)
+		set(12500, 31250, 50000, 62500);
+#else
+	#if (F_CPU == 16000000)
+		set(12030, 30075, 48120, 60150);
+	#else // Its a 8MHz clock on a non-AT
+		set(12121, 30303, 48485, 60606);
+	#endif
 #endif
-
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
 
-		pulse_width[0] = WWVB_LOW;
-		pulse_width[1] = WWVB_HIGH;
-		pulse_width[2] = WWVB_MARKER;
-
 		// Generate 60kHz carrier
-#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 /*
-OC0A | !OC1A : 0 PB0 MOSI PWM 8b
-OC1A |  OC0B : 1 PB1 MISO PWM 8b
-OC1B : 4 PB4
-!OC1B : 3 PB3
-*/
+#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
+
+//OC0A | !OC1A : 0 PB0 MOSI PWM 8b
+//OC1A |  OC0B : 1 PB1 MISO PWM 8b
+//        OC1B : 4 PB4
+//       !OC1B : 3 PB3
+
 		PLLCSR = 0; // clear all flags, use synchronous clock CK
 
 #if (F_CPU == 16000000)
@@ -318,25 +325,40 @@ OC1B : 4 PB4
 		OCR1B = PWM_LOW; 		// Set pulse width to 5% duty cycle
 #endif
 #else // This is a catchall for any other chip, but ive only tested it against the chips listed below
-/*
-ATmega32u4
-OC0A |  OC1C : 11 PB7 PWM 8/16b
-OC0B :  3 PD0 SCL PWM 8b | 18 PWM 10b?
-OC1A | !OC4B :  9 PB5 PWM 16b
-OC1B |  OC4B : 10 PB6 PWM 16b
-OC3A |  OCB4 :  5 PC6 PWM HS
-OC4A : 13 PC7 PWM 10b
-!OC4D : 12 PD6 PWM 16b
-
-ATmega328p
-OC0A :  6 PD6
-OC0B :  5 PD5
-OC1A :  9 PB1
-OC1B : 10 PB2 !SS
-OC2A : 11 PB3 MOSI
-OC2B :  3 PD3
 */
-// User Phase & Frequency correct PWM for other chips (leonardo, uno et. al.)
+//ATmega32u4
+//OC0A |  OC1C : 11 PB7 PWM 8/16b
+//        OC0B :  3 PD0 SCL PWM 8b | 18 PWM 10b?
+//OC1A | !OC4B :  9 PB5 PWM 16b
+//OC1B |  OC4B : 10 PB6 PWM 16b
+//OC3A |  OCB4 :  5 PC6 PWM HS
+//        OC4A : 13 PC7 PWM 10b
+//       !OC4D : 12 PD6 PWM 16b
+//
+//ATmega328p
+//OC0A :  6 PD6
+//OC0B :  5 PD5
+//OC1A :  9 PB1
+//OC1B : 10 PB2 !SS
+//OC2A : 11 PB3 MOSI
+//OC2B :  3 PD3
+
+
+#if defined(WWVB_EXTERNAL_AM)
+		// Mode 14: Fast PWM
+		TCCR1B = _BV(WGM13) + _BV(WGM12);
+		TCCR1A = _BV(WGM11);
+			
+		pinMode(9, OUTPUT);
+		
+		// Inverted output ie. D9 -> !OCR1A
+		TCCR1A |= _BV(COM1A1) + _BV(COM1A0); 
+
+		ICR1 = WWVB_ENDOFBIT; // Set PWM to 1Hz (16MHz / (64*250)) = 1Hz
+				
+		OCR1A = WWVB_ENDOFBIT; // Default low
+#else
+		// Use Phase & Frequency correct PWM for other chips (leonardo, uno et. al.)
 		TCCR1B = _BV(WGM13); // Mode 8: Phase & Frequency correct PWM
 
 #if (F_CPU == 16000000)
@@ -344,31 +366,31 @@ OC2B :  3 PD3
 		// Yes, its 133 and not 132 because the compare is double sided : 0->133->132->1
 		PWM_HIGH = 66; // ~50% duty cycle
 		PWM_LOW = 6; // ~5% duty cycle
-#elif (F_CPU == 8000000)
+	#elif (F_CPU == 8000000)
 		ICR1 = 67; // Set PWM to 60.6kHz (8MHz / (2*66)) = 60606Hz
 		PWM_HIGH = 33; // ~50% duty cycle
 		PWM_LOW = 3; // ~5% duty cycle
-#endif
+	#endif
 
-
-#if defined(USE_OC1A)
+	#if defined(USE_OC1A)
 		pinMode(9, OUTPUT);
 
 		TCCR1A = _BV(COM1A1); // Clear OC1A on compare match to OCR1A
 
 		OCR1A = PWM_LOW;
-#elif defined(USE_OC1B)
+	#elif defined(USE_OC1B)
 		pinMode(10, OUTPUT);
 
 		TCCR1A = _BV(COM1B1); // Clear OC1B on compare match to OCR1B
 
 		OCR1B = PWM_LOW;
+	#endif
 #endif
+		// enable interrupt on Timer1 overflow
+		TIMSK1 |= _BV(TOIE1);
 
-		TIMSK1 |= _BV(TOIE1); // enable interrupt on Timer1 overflow
-
-#endif
-// clear the indexing
+		//#endif
+				// clear the indexing
 		frame_index = 0;
 		subframe_index = 0;
 		isr_count = 0;
@@ -381,17 +403,38 @@ OC2B :  3 PD3
 
 	void interrupt_routine()
 	{
-		/*
-		This routine is checked at each counter overflow - i.e. at 60kHz
+#if defined(WWVB_EXTERNAL_AM)
+		//This routine is checked at 1Hz
+		subframe_index = ++frame_index % 10;
+		set_lowTime();
 
-		if the 60kHz PWM pulse has been low for the correct time
-		1. set the PWM pulse high
+		OCR1A = WWVB_LOWTIME;
 
-		if instead the PWM pulse has finished sending the data bit (1second has elapsed)
-		2.1. set the PWM pulse low
-		2.2. increment to the next bit in the subframe
-		2.3. set the next WWVB_LOWTIME
-		*/
+		// flip _is_odd_bit
+		_is_odd_bit = !_is_odd_bit;
+
+		// increment to the next second
+		add_time(0, 0, 1);
+
+		// increment the frame indices
+		if (frame_index == 60)
+		{
+			// increment to the next minute
+			//t_ss = 0;
+			//add_time(0, 1, 0);
+
+			// reset the frame_index
+			frame_index = 0;
+		}
+#else
+		//This routine is checked at each counter overflow - i.e. at 60kHz
+
+		//if the 60kHz PWM pulse has been low for the correct time
+		//1. set the PWM pulse high
+		//if instead the PWM pulse has finished sending the data bit (1 second has elapsed)
+		//2.1. set the PWM pulse low
+		//2.2. increment to the next bit in the subframe
+		//2.3. set the next WWVB_LOWTIME
 
 		if ((_is_high == false) & (++isr_count == WWVB_LOWTIME))
 		{
@@ -434,6 +477,7 @@ OC2B :  3 PD3
 				frame_index = 0;
 			}
 		}
+#endif
 	}
 
 	void start()
@@ -441,47 +485,54 @@ OC2B :  3 PD3
 		frame_index = 0;
 		subframe_index = 0;
 		set_lowTime();
-#if defined(USE_OC1A)
-		OCR1A = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
-#elif defined(USE_OC1B)
-		OCR1B = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
-#endif
+
 		resume();
 	}
 	void set_low()
 	{
+#if defined(WWVB_EXTERNAL_AM)
+		OCR1A = WWVB_ENDOFBIT;
+#else
 #if defined(USE_OC1A)
 		OCR1A = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
 #elif defined(USE_OC1B)
 		OCR1B = PWM_LOW;   // Set PWM to 5% duty cycle (signal LOW)
 #endif
+#endif
 	}
 	void set_high()
 	{
+#if defined(WWVB_EXTERNAL_AM)
+		OCR1A = 0;
+#else
 #if defined(USE_OC1A)
 		OCR1A = PWM_HIGH;   // Set PWM to 50% duty cycle (signal LOW)
 #elif defined(USE_OC1B)
 		OCR1B = PWM_HIGH;   // Set PWM to 50% duty cycle (signal LOW)
+#endif
 #endif
 	}
 	void stop()
 	{
 		_is_active = false;
 
-#if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-		bitClear(TCCR1, CS12); // Set clock prescalar to 000 (STOP Timer/Clock)
-#else
-		bitClear(TCCR1B, CS10); // Set clock prescalar to 000 (STOP Timer/Clock)
-#endif
+		// Set clock prescalar to 000 (STOP Timer/Clock)
+		TCCR1B &= ~_BV(CS12) & ~_BV(CS11) & ~_BV(CS10); 
 	}
 	void resume()
 	{
 		_is_active = true;
 
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
-		bitSet(TCCR1, CS12); // Set clock prescalar to 8 (64MHz / 8 = 8MHz)
+		TCCR1 |= _BV(CS12); // Set clock prescalar to 8 (64MHz / 8 = 8MHz)
 #else
-		bitSet(TCCR1B, CS10); // Set clock prescalar to 1 (16MHz or 8MHz - as per the base clock)
+#if defined(WWVB_EXTERNAL_AM)
+		// Set clock prescalar to 256
+		TCCR1B |= _BV(CS12);
+#else
+		// Set clock prescalar to 1 (16MHz or 8MHz - as per the base clock)
+		TCCR1B |= _BV(CS10);
+#endif
 #endif
 	}
 
