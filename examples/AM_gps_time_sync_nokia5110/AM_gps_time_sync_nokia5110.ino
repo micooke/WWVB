@@ -1,20 +1,81 @@
 #include <Arduino.h>
+//Arduino Nano
+//              +----+=====+----+
+//              |    | USB |    |
+// LCD CLK <= 13| D13+-----+D12 |12 MISO
+//              |3V3        D11~|11 => LCD Din
+//              |Vref       D10~|10 SS
+//            14| A0/D14     D9~|9 => carrier signal
+//            15| A1/D15     D8 |8 => modulation signal
+//            16| A2/D16     D7 |7 <= GPS Tx
+//            17| A3/D17     D6~|6 => GPS Rx
+//        SDA 18| A4/D18     D5~|5
+//        SCL 19| A5/D19     D4 |4 => LCD RST
+//            20| A6         D3~|3 => LCD CE/CS (Chip Enable)
+//            21| A7         D2 |2 => LCD DC (Data/Command Select)
+//              | 5V        GND |
+//              | RST       RST |
+//              | GND       TX1 |0
+//              | Vin       RX1 |1
+//              |  5V MOSI GND  |
+//              |   [ ][ ][ ]   |
+//              |   [*][ ][ ]   |
+//              | MISO SCK RST  |
+//              +---------------+
+//Arduino Micro
+//              +--------+=====+---------+
+//              |        | USB |         |
+//        SCK 13| D13    +-----+     D12 |12 MISO
+//              |3V3                 D11~|11 => LCD Din
+//              |Vref                D10~|10 SS
+// LCD DC  <= 14| A0/D14              D9~|9 => carrier signal
+// LCD CE  <= 15| A1/D15              D8 |8 => modulation signal
+// LCD RST <= 16| A2/D16              D7 |7 <= GPS Tx
+//            17| A3/D17              D6~|6 => GPS Rx
+//        SDA 18| A4/D18              D5~|5
+//        SCL 19| A5/D19              D4 |4
+//            20| A6                  D3~|3 INT1
+//            21| A7                  D2 |2 INT0
+//              | 5V                 GND |
+//              | RST                RST |
+//              | GND                TX1 |0
+//              | Vin                RX1 |1
+//              |MISO MISO[*][ ]VCC    SS|
+//              |SCK   SCK[ ][ ]MOSI MOSI|
+//              |      RST[ ][ ]GND      |
+//              +------------------------+
+//
+//Sparkfun Pro Micro
+//                       +----+=====+----+
+//                       |[J1]| USB |    |
+//                      1| TXO+-----+RAW |
+//                      0| RXI       GND |
+//                       | GND       RST |
+//                       | GND       VCC |
+//                  SDA 2| D2         A3 |21
+//                  SCL 3|~D3         A2 |20 => LCD RST
+//                      4| D4         A1 |19 => LCD CE
+//                      5|~D5         A0 |18 => LCD DC
+//            GPS Tx <= 6|~D6        D15 |15 => LCD CLK
+//            GPS Rx => 7| D7        D14 |14 MISO
+// modulation signal <= 8| D8        D16 |16 => LCD Din
+//    carrier signal <= 9|~D9        D10~|10
+//                       +---------------+
 
 /*
------------+-----------+-----------------
-Chip       | #define   | WWVB_OUT
------------+-----------+-----------------
-ATtiny85   |  USE_OC1A | D1 / PB1 (pin 6)
-ATtiny85   | *USE_OC1B | D4 / PB4 (pin 3)
------------+-----------+-----------------
-ATmega32u4 | *USE_OC1A | D9
-ATmega32u4 |  USE_OC1B | D10
------------+-----------+-----------------
-ATmega328p | *USE_OC1A | D9
-ATmega328p |  USE_OC1B | D10
------------+-----------+-----------------
-
-* Default setup
++-----------------------+-----------+----------+--------------+
+| Chip                  | #define   | WWVB_OUT |      N/A     |
++-----------------------+-----------+----------+--------------+
+|                       |  WWVB_PAM | carrier  | **modulation |
++-----------------------+-----------+----------+--------------+
+| ATtiny85              |  USE_OC1A |    D1    |       D2     |
+|                       | *USE_OC1B |    D4    |       D3     |
++-----------------------+-----------+----------+--------------+
+| ATmega32u4/ATmega328p | *USE_OC1A |    D9    |       D8     |
+|                       |  USE_OC1B |   D10    |       D8     |
++-----------------------+-----------+----------+--------------+
+* Default define
+** default modulation pin ( can be changed using setup(modulation_pin) )
 */
 
 //#define _DEBUG 1 // Serial output
@@ -25,7 +86,7 @@ bool sync_gpstime = true;
 uint32_t t0;
 #define REQUIRE_TIMEDATESTRING 1
 #include <TimeDateTools.h> // include before wwvb.h AND/OR ATtinyGPS.h
-#define WWVB_EXTERNAL_AM 1 // Output digital AM on D8 and use an external circuit to modulate the 50% duty cycle 60kHz carrier on D9
+#define WWVB_PAM // Output the modulation signal on D8 and use an external circuit to modulate the 50% duty cycle 60kHz carrier on D9
 #include <wwvb.h> // include before ATtinyGPS.h
 wwvb wwvb_tx;
 
@@ -36,11 +97,7 @@ ISR(TIMER1_OVF_vect)
 }
 
 #include <SoftwareSerial.h>
-#if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-SoftwareSerial ttl(10, 8);// Rx, Tx pin
-#else
-SoftwareSerial ttl(10, 8);// Rx, Tx pin
-#endif
+SoftwareSerial ttl(7, 6);// Rx, Tx pin
 
 //#define GPS_MODULE 0 // ublox : Flash 16,812 bytes, SRAM 1299 bytes
 //#define GPS_MODULE 1 // mediatek (default) : Flash 16,138 bytes, SRAM 1053 bytes
@@ -55,8 +112,8 @@ ATtinyGPS gps;
 #if defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
 Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(A0, A1, A2); // HardwareSPI
 #else
-//Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(2, 3, 4); // HardwareSPI
-Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(7, 6, 5, 4, 3); // SoftwareSPI
+Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(2, 3, 4); // HardwareSPI
+//Adafruit_PCD8544 nokia5110 = Adafruit_PCD8544(7, 6, 5, 4, 3); // SoftwareSPI
 #endif
 
 // Setup your timezones here
@@ -65,7 +122,7 @@ const int8_t wwvb_timezone[2] = { -6, 0 }; // This is the timezone of your wwvb 
 
 void setup()
 {
-	wwvb_tx.setup();
+	wwvb_tx.setup(8);
 
 	// Set the wwvb calibration values
 	// ATmega328p : _DEBUG = 0 or 1 : frametime for calibrate( 86, 86) = 60.000254s
@@ -87,7 +144,8 @@ void setup()
 	gps.setup(ttl);
 
 	nokia5110.begin();
-	nokia5110.setContrast(38);
+	//nokia5110.setContrast(38); // 5V
+	nokia5110.setContrast(25); // 3.3V
 	nokia5110.setTextSize(1);
 	nokia5110.setTextColor(BLACK);
 		

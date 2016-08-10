@@ -1,5 +1,9 @@
 #ifndef wwvb_h
 #define wwvb_h
+
+// None - PWM modulated output on D9
+// WWVB_MODULATION_OUT - modulation out of D9
+// WWVB_PAM - Carrier output on D9, Modulation output on D10
 /*
 Designed for the ATtiny85 @ 16MHz / 5V
 ( but works on the ATmega328p and ATmega32u4 )
@@ -28,11 +32,7 @@ See minimum.ino for a brief example that sets the wwvb time to the compile time
 #define REQUIRE_TIMEDATESTRING 1
 #endif
 
-#if !defined(WWVB_EXTERNAL_AM)
-#define WWVB_EXTERNAL_AM 0
-#endif
-
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 #if (F_CPU == 16000000)
 //#error "Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM"
 #pragma message("ERROR : Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM")
@@ -55,21 +55,21 @@ fc = 1/(2*pi*RC) = 1.45kHz (the carrier is 60kHz, the modulation is about 1 to 5
 
 WWVB_OUT |--(p0)--[110R]--(p1)--[1uF]--|GND
 
------------+-----------+-----------------
-Chip       | #define   | WWVB_OUT
------------+-----------+-----------------
-ATtiny85   |  USE_OC1A | D1 / PB1 (pin 6)
-ATtiny85   | *USE_OC1B | D4 / PB4 (pin 3)
------------+-----------+-----------------
-ATmega32u4 | *USE_OC1A | D9
-ATmega32u4 |  USE_OC1B | D10
------------+-----------+-----------------
-ATmega328p | *USE_OC1A | D9
-ATmega328p |  USE_OC1B | D10
------------+-----------+-----------------
-
-* Default setup
++-----------------------+-----------+----------+--------------+
+| Chip                  | #define   | WWVB_OUT |      N/A     |
++-----------------------+-----------+----------+--------------+
+|                       |  WWVB_PAM | carrier  | **modulation |
++-----------------------+-----------+----------+--------------+
+| ATtiny85              |  USE_OC1A |    D1    |       D2     |
+|                       | *USE_OC1B |    D4    |       D3     |
++-----------------------+-----------+----------+--------------+
+| ATmega32u4/ATmega328p | *USE_OC1A |    D9    |       D8     |
+|                       |  USE_OC1B |   D10    |       D8     |
++-----------------------+-----------+----------+--------------+
+* Default define
+** default modulation pin ( can be changed using setup(modulation_pin) )
 */
+
 #if !(defined(USE_OC1A) | defined(USE_OC1B))
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 //#error "This library is currently broken for the ATtiny"
@@ -103,6 +103,9 @@ private:
 	* 10 bits of data per subframe / 60 bits of data
 	* 1 bit of data per second
 	*/
+	// Define the Modulation and Carrier pins
+	uint8_t modulation_pin;
+	uint8_t carrier_pin;
 
 	//                         0   1   2   3   4   5   6   7   8   9
 	//                         M  40  20  10   0   8   4   2   1   M
@@ -153,6 +156,31 @@ private:
 public:
 	wwvb() : timezone_HH(0), timezone_MM(0), is_leap_year_(0), daylight_savings_(0)
 	{
+		// Set the carrier and modulation pins to output
+		// Note : If WWVB_PAM is not defined, carrier refers to the PWM WWVB_OUT signal
+#if defined(__AVR_ATtinyX5__)
+#if defined(USE_OC1A)
+#if defined(WWVB_PAM)
+		modulation_pin = PB2;
+#endif
+		carrier_pin = PB1;
+#elif defined(USE_OC1B)
+#if defined(WWVB_PAM)
+		modulation_pin = PB3;
+#endif
+		carrier_pin = PB4;
+#endif
+#else
+#if defined(WWVB_PAM)
+		modulation_pin = 8;
+#endif
+#if defined(USE_OC1A)
+		carrier_pin = 9;
+#elif defined(USE_OC1B)
+		carrier_pin = 10;
+#endif
+#endif
+
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		calibrate(0, 0); // INVALID
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
@@ -240,7 +268,7 @@ public:
 #endif
 	}
 
-	void setup()
+	void setup(const int8_t _modulation_pin = -1)
 	{
 		/*
 		Setup the count values that correspond to 0.2s,0.5s,0.8s for wwvb encoding [LOW,HIGH,MARKER]
@@ -271,14 +299,24 @@ public:
 		% Note: uint16_t maximum value is 65535, we need a max of 60606 (8MHz  ATmega328p, ATmega32u4) or
 		% 60150 (ATtiny85 or 16MHz ATmega328p, ATmega32u4)so we can store the counter in 16 bits
 		*/
-#if defined(WWVB_EXTERNAL_AM)
+		pinMode(carrier_pin, OUTPUT);
+#if defined(WWVB_PAM)
+		if (_modulation_pin != -1)
+		{
+			modulation_pin = _modulation_pin;
+		}
+		pinMode(modulation_pin, OUTPUT);
+		digitalWrite(modulation_pin, LOW);
+#endif
+
+#if defined(WWVB_MODULATION_OUT)
 		set(12500, 31250, 50000, 62500);
 #else
-	#if (F_CPU == 16000000)
+#if (F_CPU == 16000000)
 		set(12030, 30075, 48120, 60150);
-	#else // Its a 8MHz clock on a non-AT
+#else // Its a 8MHz clock on a non-AT
 		set(12121, 30303, 48485, 60606);
-	#endif
+#endif
 #endif
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
 
@@ -306,8 +344,6 @@ public:
 		OCR1C = 132; 			// Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
 
 #if defined(USE_OC1A)
-		pinMode(PB1, OUTPUT);	// setup OC1A PWM pin as output
-
 		TCCR1 |= _BV(PWM1A)  	// Clear timer/counter after compare match to OCR1C
 			| _BV(COM1A1); 	// Clear the OC1A output line after match
 
@@ -315,8 +351,6 @@ public:
 
 		OCR1A = PWM_LOW; 		// Set pulse width to 5% duty cycle
 #elif defined(USE_OC1B)
-		pinMode(PB4, OUTPUT);	// setup OC1B PWM pin as output
-
 		GTCCR = _BV(PWM1B) 		// Clear timer/counter after compare match to OCR1C
 			| _BV(COM1B1);	// Clear the OC1B output line after match
 
@@ -343,21 +377,19 @@ public:
 //OC2A : 11 PB3 MOSI
 //OC2B :  3 PD3
 
-
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 		// Mode 14: Fast PWM
 		TCCR1B = _BV(WGM13) + _BV(WGM12);
 		TCCR1A = _BV(WGM11);
-			
-		pinMode(9, OUTPUT);
-		
+
 		// Inverted output ie. D9 -> !OCR1A
-		TCCR1A |= _BV(COM1A1) + _BV(COM1A0); 
+		TCCR1A |= _BV(COM1A1) + _BV(COM1A0);
 
 		ICR1 = WWVB_ENDOFBIT; // Set PWM to 1Hz (16MHz / (64*250)) = 1Hz
-				
+
 		OCR1A = WWVB_ENDOFBIT; // Default low
 #else
+
 		// Use Phase & Frequency correct PWM for other chips (leonardo, uno et. al.)
 		TCCR1B = _BV(WGM13); // Mode 8: Phase & Frequency correct PWM
 
@@ -366,31 +398,27 @@ public:
 		// Yes, its 133 and not 132 because the compare is double sided : 0->133->132->1
 		PWM_HIGH = 66; // ~50% duty cycle
 		PWM_LOW = 6; // ~5% duty cycle
-	#elif (F_CPU == 8000000)
+#elif (F_CPU == 8000000)
 		ICR1 = 67; // Set PWM to 60.6kHz (8MHz / (2*66)) = 60606Hz
 		PWM_HIGH = 33; // ~50% duty cycle
 		PWM_LOW = 3; // ~5% duty cycle
-	#endif
+#endif
 
-	#if defined(USE_OC1A)
-		pinMode(9, OUTPUT);
-
+#if defined(USE_OC1A)
 		TCCR1A = _BV(COM1A1); // Clear OC1A on compare match to OCR1A
 
-		OCR1A = PWM_LOW;
-	#elif defined(USE_OC1B)
-		pinMode(10, OUTPUT);
-
+		OCR1A = PWM_HIGH;
+#elif defined(USE_OC1B)
 		TCCR1A = _BV(COM1B1); // Clear OC1B on compare match to OCR1B
 
-		OCR1B = PWM_LOW;
-	#endif
+		OCR1B = PWM_HIGH;
+#endif
 #endif
 		// enable interrupt on Timer1 overflow
 		TIMSK1 |= _BV(TOIE1);
 
 		//#endif
-				// clear the indexing
+		// clear the indexing
 		frame_index = 0;
 		subframe_index = 0;
 		isr_count = 0;
@@ -403,7 +431,7 @@ public:
 
 	void interrupt_routine()
 	{
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 		//This routine is checked at 1Hz
 		subframe_index = ++frame_index % 10;
 		set_lowTime();
@@ -438,10 +466,15 @@ public:
 
 		if ((_is_high == false) & (++isr_count == WWVB_LOWTIME))
 		{
+#if defined(WWVB_PAM)
+			pinMode(modulation_pin, INPUT);
+			digitalWrite(modulation_pin, LOW);
+#else
 #if defined(USE_OC1A)
 			OCR1A = PWM_HIGH;
 #elif defined(USE_OC1B)
 			OCR1B = PWM_HIGH;
+#endif
 #endif
 			_is_high = true;
 		}
@@ -449,11 +482,15 @@ public:
 		{
 			// reset the isr_count (poor-mans timer, but its synced to the ~60kHz clock)
 			isr_count = 0;
-
+#if defined(WWVB_PAM)
+			pinMode(modulation_pin, OUTPUT);
+			digitalWrite(modulation_pin, LOW);
+#else
 #if defined(USE_OC1A)
 			OCR1A = PWM_LOW;
 #elif defined(USE_OC1B)
 			OCR1B = PWM_LOW;
+#endif
 #endif
 			_is_high = false;
 
@@ -490,7 +527,7 @@ public:
 	}
 	void set_low()
 	{
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 		OCR1A = WWVB_ENDOFBIT;
 #else
 #if defined(USE_OC1A)
@@ -502,7 +539,7 @@ public:
 	}
 	void set_high()
 	{
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 		OCR1A = 0;
 #else
 #if defined(USE_OC1A)
@@ -517,7 +554,7 @@ public:
 		_is_active = false;
 
 		// Set clock prescalar to 000 (STOP Timer/Clock)
-		TCCR1B &= ~_BV(CS12) & ~_BV(CS11) & ~_BV(CS10); 
+		TCCR1B &= ~_BV(CS12) & ~_BV(CS11) & ~_BV(CS10);
 	}
 	void resume()
 	{
@@ -526,7 +563,7 @@ public:
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		TCCR1 |= _BV(CS12); // Set clock prescalar to 8 (64MHz / 8 = 8MHz)
 #else
-#if defined(WWVB_EXTERNAL_AM)
+#if defined(WWVB_MODULATION_OUT)
 		// Set clock prescalar to 256
 		TCCR1B |= _BV(CS12);
 #else

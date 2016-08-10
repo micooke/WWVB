@@ -7,10 +7,24 @@
 //                        +----+
 
 volatile uint8_t isr_count = 0;
-#define DIVIDER_60kHz_TO_1Hz 30000
+#define DIVIDER_60kHz_TO_1Hz 60000
 volatile uint16_t _60kHz_to_1Hz = DIVIDER_60kHz_TO_1Hz;
 volatile bool mod_state = false;
-volatile uint8_t mod_pin = PB3;
+
+#if defined(__AVR_ATtinyX5__)
+#define PERIOD_REG OCR1C
+#define MODULATION_PIN PB3
+#define CARRIER_PIN PB4
+
+#define USE_OC1B
+#if defined(USE_OC1A)
+#define PULSEWIDTH_REG OCR1A
+#elif defined(USE_OC1B)
+#define PULSEWIDTH_REG OCR1B
+#endif
+#else
+#define PERIOD_REG ISR1
+#endif
 
 // Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
 // 132 resulted in 63492Hz
@@ -37,43 +51,52 @@ ISR(TIMER1_OVF_vect)
 	//
 	switch (isr_count)
 	{
-	// First (failed) attempt
+		// First (failed) attempt
 	case 0:
 	case 1:
-		OCR1C = PWM_60kHz[0];
+		PERIOD_REG = PWM_60kHz[0];
 		++isr_count;
 		break;
 	case 2:
-		OCR1C = PWM_60kHz[1];
+		PERIOD_REG = PWM_60kHz[1];
 		isr_count = 0;
 		break;
-	
-	// Second/Third/Forth attempt
-	/*
-	case 0:
-	case 1:
-	case 2:
-	case 3:
-	case 4:
-	case 5:
-	case 6:
-	case 7:
-		OCR1C = PWM_60kHz[1];
-		++isr_count;
-		break;
-	case 8:
-	case 9:
-		OCR1C = PWM_60kHz[0];
-		isr_count = 0;
-		break;
-	*/
+
+		// Second/Third/Forth attempt
+		/*
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+		case 7:
+			OCR1C = PWM_60kHz[1];
+			++isr_count;
+			break;
+		case 8:
+		case 9:
+			OCR1C = PWM_60kHz[0];
+			isr_count = 0;
+			break;
+		*/
 	}
 
 	// Divide down the clock to 10Hz
 	switch (_60kHz_to_1Hz)
 	{
 	case 0:
-		digitalWrite(mod_pin, mod_state);
+		if (mod_state == LOW)
+		{
+			pinMode(MODULATION_PIN, OUTPUT);
+			digitalWrite(MODULATION_PIN, LOW);
+		}
+		else
+		{
+			pinMode(MODULATION_PIN, INPUT);
+			digitalWrite(MODULATION_PIN, LOW);
+		}
 		mod_state = !mod_state;
 		_60kHz_to_1Hz = DIVIDER_60kHz_TO_1Hz;
 		break;
@@ -83,43 +106,63 @@ ISR(TIMER1_OVF_vect)
 	}
 }
 
+void set8bitPWM(const uint16_t &FrequencyHz, const uint8_t Timer)
+{
+#if defined(__AVR_ATtinyX5__)
+	uint32_t base_clock = 64000000;
+#else
+	uint32_t base_clock = F_CPU; 
+#endif
+
+	uint16_t prescalar[5] = { 1, 8, 64, 256, 1024 };
+	uint16_t i = 0;
+	uint32_t FrequencyCount = base_clock / FrequencyHz;
+	
+	// find the right prescalar
+	while ((FrequencyCount > (base_clock / (prescalar[i] * 255))) & (i < 5))
+	{
+		++i;
+	}
+
+}
+
 void setup()
 {
-	// set the modulation pin as output
-	pinMode(mod_pin, OUTPUT);
-
-	// Generate 60kHz carrier
-	// OC0A | !OC1A : 0 PB0 MOSI PWM 8b
-	// OC1A |  OC0B : 1 PB1 MISO PWM 8b
-	//         OC1B : 4 PB4
-	//        !OC1B : 3 PB3
-	PLLCSR = _BV(PCKE) | _BV(PLLE); // enable 64MHz clock
+	// set the modulation and carrier pins as outputs
+	pinMode(CARRIER_PIN, OUTPUT);
+	pinMode(MODULATION_PIN, OUTPUT);
+	digitalWrite(MODULATION_PIN, LOW);
 	
-	/// TIMER1
-	// Note : I tried using the internal 16MHz or 8MHz clock, but it didnt work
-	//        This is what is in the wwvb.h, hence wwvb.h doesnt work for attiny chips anymore :(
-	//        I assume that the arduino framework for the attinys stuffs this, likely due to the delay routine
-	//
-	// Note2 : Using the system clock changes the PWM mode, which uses 255 as the TOP value
-	//
-	OCR1C = PWM_60kHz[0]; 	// Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
-	TCCR1 = 0;
+	PERIOD_REG = PWM_60kHz[0]; 	// Set PWM to 60kHz (8MHz / (132 + 1)) = 60150Hz
+	PULSEWIDTH_REG = PERIOD_REG / 2;
 
-	pinMode(PB4, OUTPUT);	// setup OC1B PWM pin as output
-
-	GTCCR = _BV(PWM1B) 		// Clear timer/counter after compare match to OCR1C
-		| _BV(COM1B1);		// Clear the OC1B output line after match
-
-	OCR1B = 66;				// ~50% duty cycle
+#if defined(__AVR_ATtinyX5__)
+	PLLCSR = _BV(PCKE) | _BV(PLLE);	// enable 64MHz clock
+	
+#if defined(USE_OC1A)
+	TCCR1 = _BV(PWM1A)  			// Clear timer/counter after compare match to OCR1C
+		| _BV(COM1A1); 				// Clear the OC1A output line after match
+#elif defined(USE_OC1B)
+	GTCCR = _BV(PWM1B) 				// Clear timer/counter after compare match to OCR1C
+		| _BV(COM1B1);				// Clear the OC1B output line after match
+#endif
 
 	// Enable Timer1 overflow interrupt
 	TIMSK |= _BV(TOIE1);
+#else
+
+#endif
 
 	// enable interrupts
 	sei();
 
 	// Start transmission (Set the clock prescalar)
+#if defined(__AVR_ATtinyX5__)
 	TCCR1 |= _BV(CS12); // Set clock to PCK/8 (64MHz / 8 = 8MHz)
+#else
+	// Set clock prescalar to 1 (16MHz or 8MHz - as per the base clock)
+	//TCCR1B |= _BV(CS10);
+#endif
 }
 
 void loop() {}
