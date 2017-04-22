@@ -14,15 +14,24 @@ Hopefully your wwvb receiver is insensitive to this -17dB value,
 as this library uses pulse width modulation to set a 5% duty cycle
 for the 'low' signal
 
+WWVB format:
+http://www.nist.gov/pml/div688/grp40/wwvb.cfm
+
+A frame of data takes 60 seconds to send, and starts at the start of a minute
+
+A frame of data contains:
+* 6 subframes
+* 10 bits of data per subframe / 60 bits of data
+* 1 bit of data per second
+	
 Copyright (c) 2015 Mark Cooke, Martin Sniedze
 
 Author/s: [Mark Cooke](https://www.github.com/micooke), [Martin Sniedze](https://www.github.com/mr-sneezy)
 
 License: MIT license (see LICENSE file).
 */
-/*
-See minimum.ino for a brief example that sets the wwvb time to the compile time
-*/
+
+//See minimum.ino for a brief example that sets the wwvb time to the compile time
 
 #include <Arduino.h>
 
@@ -33,10 +42,17 @@ See minimum.ino for a brief example that sets the wwvb time to the compile time
 #endif
 
 #if defined(WWVB_MODULATION_OUT)
-#if (F_CPU == 16000000)
+#if (F_CPU != 16000000)
 //#error "Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM"
 #pragma message("ERROR : Currently only 16MHz ATmega328p and ATmega32u4 boards are supported for external AM")
 #endif
+#endif
+
+#if (F_CPU < 16000000)
+#define WWVB_LOW_ms 200
+#define WWVB_HIGH_ms 500
+#define WWVB_MARKER_ms 800
+#define WWVB_EOB_ms 1000
 #endif
 
 /*
@@ -92,34 +108,10 @@ WWVB_OUT |--(p0)--[110R]--(p1)--[1uF]--|GND
 class wwvb
 {
 private:
-	/*
-	WWVB format:
-	http://www.nist.gov/pml/div688/grp40/wwvb.cfm
-
-	A frame of data takes 60 seconds to send, and starts at the start of a minute
-
-	A frame of data contains:
-	* 6 subframes
-	* 10 bits of data per subframe / 60 bits of data
-	* 1 bit of data per second
-	*/
+	
 	// Define the Modulation and Carrier pins
 	uint8_t modulation_pin;
 	uint8_t carrier_pin;
-
-	//                         0   1   2   3   4   5   6   7   8   9
-	//                         M  40  20  10   0   8   4   2   1   M
-	volatile bool MINS[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                         -   -  20  10   0   8   4   2   1   M
-	volatile bool HOUR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                         -   - 200 100   0  80  40  20  10   M
-	volatile bool DOTY[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                         8   4   2   1   -   -   +   -   +   M
-	volatile bool DUT1[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                         0.8 0.4 0.2 0.1 -  80  40  20  10   M
-	volatile bool YEAR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
-	//                         8   4   2   1   - LYI LSW   2   1   M
-	volatile bool MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
 
 	// temp variables
 	volatile uint8_t t_ss, t_mm, t_hh, t_DD, t_MM, t_YY;
@@ -140,22 +132,47 @@ private:
 	// hopefully your sketch can spare the extra 6 bytes for the convenience of being able to use WWVB_LOW etc.
 
 	volatile uint16_t WWVB_LOW, WWVB_HIGH, WWVB_MARKER, WWVB_ENDOFBIT;
+	#if (F_CPU < 16000000)
+	uint32_t t0 = 0;
+	uint32_t tELAPSED = 0;
+	volatile uint16_t pulse_width[3] = { WWVB_LOW_ms, WWVB_HIGH_ms, WWVB_MARKER_ms };
+	#else
 	volatile uint16_t pulse_width[3] = { WWVB_LOW, WWVB_HIGH, WWVB_MARKER };
+	#endif
+	
 	int16_t WWVB_EOB_CAL[2] = { 0,  0 };
 
-	volatile uint16_t WWVB_LOWTIME;
+	//                         0   1   2   3   4   5   6   7   8   9
+	//                         M  40  20  10   0   8   4   2   1   M
+	volatile bool MINS[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                         -   -  20  10   0   8   4   2   1   M
+	volatile bool HOUR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                         -   - 200 100   0  80  40  20  10   M
+	volatile bool DOTY[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                         8   4   2   1   -   -   +   -   +   M
+	volatile bool DUT1[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                         0.8 0.4 0.2 0.1 -  80  40  20  10   M
+	volatile bool YEAR[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	//                         8   4   2   1   - LYI LSW   2   1   M
+	volatile bool MISC[10] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0 };
+	
 	uint8_t PWM_LOW, PWM_HIGH;
 
-	volatile int32_t isr_count = 0;
-	volatile uint8_t frame_index, subframe_index;
-
-	volatile bool _is_active = false;
+	volatile uint16_t WWVB_LOWTIME;
+	
 	volatile bool _is_high = false;
+	
+	volatile int32_t isr_count = 0;
+	volatile uint8_t subframe_index;
+	
+	volatile bool _is_active = false;
 	volatile bool _is_odd_bit = true;
-
 public:
+	volatile uint8_t frame_index = 0;
+
 	wwvb() : timezone_HH(0), timezone_MM(0), is_leap_year_(0), daylight_savings_(0)
 	{
+		pinMode(LED_BUILTIN, OUTPUT);
 		// Set the carrier and modulation pins to output
 		// Note : If WWVB_PAM is not defined, carrier refers to the PWM WWVB_OUT signal
 #if defined(__AVR_ATtinyX5__)
@@ -184,9 +201,9 @@ public:
 #if defined(__AVR_ATtiny25__) | defined(__AVR_ATtiny45__) | defined(__AVR_ATtiny85__)
 		calibrate(0, 0); // INVALID
 #elif defined(__AVR_ATmega16U4__) | defined(__AVR_ATmega32U4__)
-		calibrate(-6, -6);
+		calibrate(-6, -6); // 16MHz
 #elif defined(__AVR_ATmega168__) | defined(__AVR_ATmega168P__) | defined(__AVR_ATmega328P__)
-		calibrate(86, 86);
+		calibrate(86, 86); //16MHz
 #endif
 	}
 
@@ -315,7 +332,8 @@ public:
 #if (F_CPU == 16000000)
 		set(12030, 30075, 48120, 60150);
 #else // Its a 8MHz clock on a non-AT
-		set(12121, 30303, 48485, 60606);
+		//set(12121, 30303, 48485, 60606);
+		set(WWVB_LOW_ms, WWVB_HIGH_ms, WWVB_MARKER_ms, WWVB_EOB_ms);
 #endif
 #endif
 		WWVB_LOWTIME = WWVB_LOW; //DEFAULT STATE
@@ -431,7 +449,11 @@ public:
 
 	void interrupt_routine()
 	{
-#if defined(WWVB_MODULATION_OUT)
+		#if (F_CPU < 16000000)
+		tELAPSED = millis() - t0;
+		#endif
+
+	#if defined(WWVB_MODULATION_OUT)
 		//This routine is checked at 1Hz
 		subframe_index = ++frame_index % 10;
 		set_lowTime();
@@ -463,35 +485,28 @@ public:
 		//2.1. set the PWM pulse low
 		//2.2. increment to the next bit in the subframe
 		//2.3. set the next WWVB_LOWTIME
-
-		if ((_is_high == false) & (++isr_count == WWVB_LOWTIME))
+		#if (F_CPU < 16000000)
+		if (tELAPSED >= WWVB_EOB_ms)
 		{
-#if defined(WWVB_PAM)
-			pinMode(modulation_pin, INPUT);
-			digitalWrite(modulation_pin, LOW);
-#else
-#if defined(USE_OC1A)
-			OCR1A = PWM_HIGH;
-#elif defined(USE_OC1B)
-			OCR1B = PWM_HIGH;
-#endif
-#endif
-			_is_high = true;
-		}
-		else if (isr_count == (WWVB_ENDOFBIT + WWVB_EOB_CAL[_is_odd_bit]))
+			t0 = millis();
+		#else
+		if (isr_count >= (WWVB_ENDOFBIT + WWVB_EOB_CAL[_is_odd_bit]))
 		{
 			// reset the isr_count (poor-mans timer, but its synced to the ~60kHz clock)
 			isr_count = 0;
-#if defined(WWVB_PAM)
+		#endif
+			digitalWrite(LED_BUILTIN, LOW);
+						
+		#if defined(WWVB_PAM)
 			pinMode(modulation_pin, OUTPUT);
 			digitalWrite(modulation_pin, LOW);
-#else
-#if defined(USE_OC1A)
+		#else
+			#if defined(USE_OC1A)
 			OCR1A = PWM_LOW;
-#elif defined(USE_OC1B)
+			#elif defined(USE_OC1B)
 			OCR1B = PWM_LOW;
-#endif
-#endif
+			#endif
+		#endif
 			_is_high = false;
 
 			subframe_index = ++frame_index % 10;
@@ -514,7 +529,28 @@ public:
 				frame_index = 0;
 			}
 		}
-#endif
+		#if (F_CPU < 16000000)
+		else if ((_is_high == false) & (tELAPSED >= WWVB_LOWTIME))
+		#else
+		else if ((_is_high == false) & (++isr_count >= WWVB_LOWTIME))
+		#endif
+		{
+			digitalWrite(LED_BUILTIN, HIGH);
+			
+		#if defined(WWVB_PAM)
+			pinMode(modulation_pin, INPUT);
+			digitalWrite(modulation_pin, LOW);
+		#else
+			#if defined(USE_OC1A)
+			OCR1A = PWM_HIGH;
+			#elif defined(USE_OC1B)
+			OCR1B = PWM_HIGH;
+			#endif
+		#endif
+			_is_high = true;
+		}
+		
+	#endif
 	}
 
 	void start()
@@ -582,7 +618,7 @@ public:
 	{
 #if (_DEBUG > 0)
 		Serial.println(F("internal state"));
-		print_datetime(mins_, hour_, DD_, MM_, YY_);
+		print_datetime(hour_, mins_, DD_, MM_, YY_);
 
 		Serial.print("raw bits\n");
 		raw();
@@ -601,7 +637,7 @@ public:
 		uint8_t day, month;
 		from_day_of_the_year<uint8_t>(doty, day, month, is_ly);
 
-		print_datetime(mins, hour, day, month, year);
+		print_datetime(hour, mins, day, month, year);
 
 		Serial.print(F("dut1 = "));
 		Serial.println(dut1);
@@ -687,13 +723,13 @@ public:
 	}
 	void print()
 	{
-		print_datetime(mins_, hour_, DD_, MM_, YY_);
+		print_datetime(hour_, mins_, DD_, MM_, YY_);
 	}
 #if( REQUIRE_TIMEDATESTRING == 1)
 	void set_time(char dateString[], char timeString[], const uint8_t _daylight_savings = 0)
 	{
 
-		uint8_t _mins, _hour, _secs, _DD, _MM, _YY;
+		uint8_t _hour, _mins, _secs, _DD, _MM, _YY;
 
 		DateString_to_DDMMYY(dateString, _DD, _MM, _YY);
 		TimeString_to_HHMMSS(timeString, _hour, _mins, _secs);
