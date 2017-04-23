@@ -2,7 +2,7 @@
 An Arduino based WWVB transmitter ATtiny85, nano, micro etc., synced off of GPS time (optional).
 Designed for the 16MHz or 8MHz leonardo or uno
 
-# Broken for the ATtiny85
+**Broken for the ATtiny85**
 I tried unifying the code for the ATtiny85, ATmega32u4 and ATmega328 series Arduino chips/boards but this implemented a breaking change for the ATtiny85.
 I assume the reason for this break is an incompatability between the Arduino framework (likely the delay routine) for these chips.
 
@@ -14,6 +14,13 @@ In other words, the library needs to be rewritten for the least useful use case 
 * [TimeDateTools.h](https://github.com/micooke/ATtinyGPS/TimeDateTools.h)
 * [ATtinyGPS.h](https://github.com/micooke/ATtinyGPS/ATtinyGPS.h) : for setting time based off a serial GPS
 
+## Confirmed working clocks / watches 
+* Equity by La Crosse SkyScan 31269 LCD Atomic Alarm Clock
+* La Crosse Technology WS-8418U-IT Atomic Digital Wall Clock with Moon Phase
+* BALDR B0114ST - Blue Backlight LCD Atomic Alarm Clock Digital Thermometer Calendar Temperature Table Watch Snooze Timer WWVB Desktop Clock
+
+## Confirmed NOT WORKING clocks / watches
+*Casio Lineage LCW-M170TD-7AJF
 
 ## About
 http://www.nist.gov/pml/div688/grp40/wwvb.cfm
