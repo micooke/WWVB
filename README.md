@@ -20,7 +20,7 @@ In other words, the library needs to be rewritten for the least useful use case 
 * BALDR B0114ST - Blue Backlight LCD Atomic Alarm Clock Digital Thermometer Calendar Temperature Table Watch Snooze Timer WWVB Desktop Clock
 
 ## Confirmed NOT WORKING clocks / watches
-*Casio Lineage LCW-M170TD-7AJF
+* Casio Lineage LCW-M170TD-7AJF watch
 
 ## About
 http://www.nist.gov/pml/div688/grp40/wwvb.cfm
