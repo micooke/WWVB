@@ -1,3 +1,8 @@
+**Project has been superseeded**
+
+Sep 2018 - Ive noticed a few people have starred this project recently, so i wanted to mention that this project is just for legacy and that my other repo is more current / will see development when i get back to it https://github.com/micooke/wwvb_jjy
+Having said this, you may find that this repo is simpler to understand or that it 'just works'. If so -> awesome!
+
 # Arduino WWVB Transmitter
 An Arduino based WWVB transmitter ATtiny85, nano, micro etc., synced off of GPS time (optional).
 Designed for the 16MHz or 8MHz leonardo or uno
